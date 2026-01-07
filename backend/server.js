@@ -605,6 +605,7 @@ let pool;
         tdr_filepath VARCHAR(255) NULL,
         notification_emails TEXT,
         removed_default_documents TEXT,
+        five_day_notified BOOLEAN DEFAULT FALSE,
         FOREIGN KEY (project_id) REFERENCES projects(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
       )
@@ -613,24 +614,50 @@ let pool;
 
     // Add removed_default_documents column if it doesn't exist (for existing databases)
     try {
-      await pool.query(`
-        ALTER TABLE offers
-        ADD COLUMN IF NOT EXISTS removed_default_documents TEXT
+      // Check if column exists first
+      const [columns] = await pool.query(`
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = 'rh_app' 
+        AND TABLE_NAME = 'offers' 
+        AND COLUMN_NAME = 'removed_default_documents'
       `);
-      console.log('removed_default_documents column added to offers table');
+      
+      if (columns.length === 0) {
+        await pool.query(`
+          ALTER TABLE offers
+          ADD COLUMN removed_default_documents TEXT
+        `);
+        console.log('removed_default_documents column added to offers table');
+      } else {
+        console.log('removed_default_documents column already exists');
+      }
     } catch (error) {
-      console.log('removed_default_documents column already exists or error adding it:', error.message);
+      console.log('Error checking/adding removed_default_documents column:', error.message);
     }
 
     // Add five_day_notified column if it doesn't exist (for 5-day expiration warning)
     try {
-      await pool.query(`
-        ALTER TABLE offers
-        ADD COLUMN IF NOT EXISTS five_day_notified BOOLEAN DEFAULT FALSE
+      // Check if column exists first
+      const [columns] = await pool.query(`
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = 'rh_app' 
+        AND TABLE_NAME = 'offers' 
+        AND COLUMN_NAME = 'five_day_notified'
       `);
-      console.log('five_day_notified column added to offers table');
+      
+      if (columns.length === 0) {
+        await pool.query(`
+          ALTER TABLE offers
+          ADD COLUMN five_day_notified BOOLEAN DEFAULT FALSE
+        `);
+        console.log('five_day_notified column added to offers table');
+      } else {
+        console.log('five_day_notified column already exists');
+      }
     } catch (error) {
-      console.log('five_day_notified column already exists or error adding it:', error.message);
+      console.log('Error checking/adding five_day_notified column:', error.message);
     }
 
     await pool.query(`
