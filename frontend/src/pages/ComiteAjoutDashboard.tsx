@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { Offer } from '../types';
+import type { OfferSummary } from '../types/offerSummary';
 import OffersSection from '../components/dashboard/OffersSection';
 import DepartmentProjectManagement from '../components/dashboard/DepartmentProjectManagement';
 import { API_BASE_URL } from '../config';
@@ -7,27 +8,35 @@ import { useI18n } from '../i18n';
 import Swal from 'sweetalert2';
 
 const ComiteAjoutDashboard = () => {
-  const [offers, setOffers] = useState<Offer[]>([]);
+  const [offerSummaries, setOfferSummaries] = useState<OfferSummary[]>([]);
   const [activeTab, setActiveTab] = useState<'offers' | 'management'>('offers');
   const [error, setError] = useState('');
   const { t } = useI18n();
 
-  const fetchOffers = useCallback(async () => {
+  const fetchOfferSummaries = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/offers`);
-      const data = await res.json();
-      setOffers(data);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/applications/summary`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setOfferSummaries(data);
+      } else {
+        setError(t('rh.error.fetchApplicationSummary'));
+      }
     } catch {
-      setError(t('rh.error.fetchOffers'));
+      setError(t('rh.error.fetchApplicationSummary'));
     }
   }, [t]);
 
   useEffect(() => {
     const load = async () => {
-      await fetchOffers();
+      await fetchOfferSummaries();
     };
     load();
-  }, [fetchOffers]);
+  }, [fetchOfferSummaries]);
   
   const handleSaveOffer = async (data: Offer) => {
     const token = localStorage.getItem('token');
@@ -57,7 +66,7 @@ const ComiteAjoutDashboard = () => {
       });
       
       if (res.ok) {
-        await fetchOffers();
+        await fetchOfferSummaries();
       } else {
         setError(t('rh.error.saveOffer'));
       }
@@ -86,7 +95,7 @@ const ComiteAjoutDashboard = () => {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         if (res.ok) {
-          await fetchOffers();
+          await fetchOfferSummaries();
         } else {
           setError(t('rh.error.deleteOffer'));
         }
@@ -138,7 +147,7 @@ const ComiteAjoutDashboard = () => {
                 </svg>
                 <span>{t('rh.tabs.offers')}</span>
                 <span className="bg-gray-200 text-gray-800 text-xs font-medium px-2 py-0.5 rounded-full">
-                  {offers.length}
+                  {offerSummaries.length}
                 </span>
               </div>
             </button>
@@ -175,7 +184,7 @@ const ComiteAjoutDashboard = () => {
         {/* Tab Content */}
         {activeTab === 'offers' && (
           <OffersSection
-            offers={offers}
+            offers={offerSummaries}
             onSaveOffer={handleSaveOffer}
             onDeleteOffer={handleDeleteOffer}
           />

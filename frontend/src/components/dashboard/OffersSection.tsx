@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Offer, User } from '../../types';
+import type { OfferSummary } from '../../types/offerSummary';
 import { getOfferTypeOnlyInfo } from '../../utils/offerType';
 import { useI18n } from '../../i18n';
 import { API_BASE_URL } from '../../config';
@@ -19,7 +20,7 @@ const useLanguageNavigate = () => {
 };
 
 interface OffersSectionProps {
-  offers: Offer[];
+  offers: OfferSummary[];
   onSaveOffer: (data: Offer) => Promise<void>;
   onDeleteOffer: (id: number) => Promise<void>;
   onArchiveOffer?: (id: number) => Promise<void>;
@@ -31,7 +32,6 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
   const [filters, setFilters] = useState({
     search: '',
     type: '',
-    country: '',
     department: '',
     status: 'actif'
   });
@@ -60,12 +60,10 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
   const [settingCandidate, setSettingCandidate] = useState<number | null>(null);
 
   const filteredOffers = offers.filter(offer => {
-    const matchesSearch = offer.title.toLowerCase().includes(filters.search.toLowerCase()) ||
-                         offer.description.toLowerCase().includes(filters.search.toLowerCase());
-    const matchesType = filters.type ? offer.type === filters.type : true;
-    const matchesCountry = filters.country ? offer.country === filters.country : true;
-    const matchesDepartment = filters.department ? offer.department_name === filters.department : true;
-    
+    const matchesSearch = offer.offer_title.toLowerCase().includes(filters.search.toLowerCase());
+    const matchesType = filters.type ? offer.offer_type === filters.type : true;
+    const matchesDepartment = filters.department ? offer.offer_department === filters.department : true;
+
     // Handle status filtering
     let matchesStatus = true;
     if (filters.status === 'actif') {
@@ -73,13 +71,12 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
     } else if (filters.status === 'cloture') {
       matchesStatus = offer.status === 'sous_evaluation' || offer.status === 'resultat';
     }
-    
-    return matchesSearch && matchesType && matchesCountry && matchesDepartment && matchesStatus;
+
+    return matchesSearch && matchesType && matchesDepartment && matchesStatus;
   });
 
-  const uniqueTypes = Array.from(new Set(offers.map(offer => offer.type)));
-  const uniqueCountries = Array.from(new Set(offers.map(offer => offer.country)));
-  const uniqueDepartments = Array.from(new Set(offers.map(offer => offer.department_name)));
+  const uniqueTypes = Array.from(new Set(offers.map(offer => offer.offer_type)));
+  const uniqueDepartments = Array.from(new Set(offers.map(offer => offer.offer_department)));
 
   const statusOptions = [
     { value: 'actif', label: t('rh.status.actif') },
@@ -95,7 +92,6 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
     setFilters({
       search: '',
       type: '',
-      country: '',
       department: '',
       status: 'actif'
     });
@@ -233,7 +229,7 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
 
         {showFilters && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
               <div>
                 <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">{t('rh.search')}</label>
                 <div className="relative">
@@ -251,7 +247,7 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
                   </svg>
                 </div>
               </div>
-              
+
               <div>
                 <label htmlFor="type" className="block text-sm font-medium text-gray-700 mb-1">{t('rh.type')}</label>
                 <select
@@ -272,25 +268,7 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
                   })}
                 </select>
               </div>
-              
-              <div>
-                <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">{t('rh.country')}</label>
-                <select
-                  id="country"
-                  name="country"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  value={filters.country}
-                  onChange={handleFilterChange}
-                >
-                  <option value="">{t('rh.allCountries')}</option>
-                  {uniqueCountries.map(country => (
-                    <option key={country} value={country}>
-                      {country}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
+
               <div>
                 <label htmlFor="department" className="block text-sm font-medium text-gray-700 mb-1">{t('rh.department')}</label>
                 <select
@@ -308,7 +286,7 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
                   ))}
                 </select>
               </div>
-              
+
               <div>
                 <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">{t('rh.status')}</label>
                 <select
@@ -369,21 +347,21 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
             const daysLeft = Math.ceil((deadlineDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
             
             return (
-              <div key={offer.id} className={`bg-white rounded-xl shadow-lg border overflow-hidden hover:shadow-xl transition-shadow ${
+              <div key={offer.offer_id} className={`bg-white rounded-xl shadow-lg border overflow-hidden hover:shadow-xl transition-shadow ${
                 isActif ? 'border-green-200' : isSousEvaluation ? 'border-yellow-200' : 'border-purple-200'
               }`}>
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       {(() => {
-                        const typeInfo = getOfferTypeOnlyInfo(offer.type);
+                        const typeInfo = getOfferTypeOnlyInfo(offer.offer_type);
                         return (
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
                             {typeInfo.name}
                           </span>
                         );
                       })()}
-                      
+
                       {/* Status badges */}
                       {!isActif && (
                         <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -392,12 +370,12 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
                           {isSousEvaluation ? t('rh.status.sousEvaluation') : t('rh.status.resultat')}
                         </span>
                       )}
-                      
-                      <h3 className="text-lg font-semibold text-gray-900 mt-2 line-clamp-2">{offer.title}</h3>
+
+                      <h3 className="text-lg font-semibold text-gray-900 mt-2 line-clamp-2">{offer.offer_title}</h3>
                     </div>
                     <div className="flex space-x-2 ml-4">
                       <button
-                        onClick={() => handleEditOffer(offer)}
+                        onClick={() => handleEditOffer({ id: offer.offer_id } as Offer)}
                         className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         title={t('rh.table.edit')}
                       >
@@ -409,7 +387,7 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
                       {/* Archive button for expired offers */}
                       {!isActif && onArchiveOffer && offer.can_archive && (
                         <button
-                          onClick={() => onArchiveOffer(offer.id)}
+                          onClick={() => onArchiveOffer(offer.offer_id)}
                           className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                           title={t('rh.archiveApplications')}
                         >
@@ -422,12 +400,12 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
                       {/* Select Candidate button for sous_evaluation offers (when no candidate selected yet) - Only for Comité d'Ouverture */}
                       {isSousEvaluation && !isResultat && isComiteOuverture && (
                         <button
-                          onClick={() => handleSetCandidate(offer.id, offer.title)}
-                          disabled={settingCandidate === offer.id}
+                          onClick={() => handleSetCandidate(offer.offer_id, offer.offer_title)}
+                          disabled={settingCandidate === offer.offer_id}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title={t('rh.selectCandidate')}
                         >
-                          {settingCandidate === offer.id ? (
+                          {settingCandidate === offer.offer_id ? (
                             <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
@@ -440,7 +418,7 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
                       )}
                       
                       <button
-                        onClick={() => onDeleteOffer(offer.id)}
+                        onClick={() => onDeleteOffer(offer.offer_id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title={t('rh.table.delete')}
                       >
@@ -450,35 +428,38 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
                       </button>
                     </div>
                   </div>
-                  
-                  <p className="text-gray-600 text-sm mb-4 line-clamp-3">{offer.description}</p>
-                  
+
                   <div className="space-y-2 text-sm">
-                    <div className="flex items-center text-gray-600">
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      {offer.country}
-                    </div>
                     <div className="flex items-center text-gray-600">
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                       </svg>
-                      {offer.department_name}
+                      {offer.offer_department}
+                    </div>
+                    <div className="flex items-center text-gray-600">
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2V6" />
+                      </svg>
+                      {offer.offer_project}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">{t('rh.applicationsLabel')}</span>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {offer.application_count} candidat{offer.application_count !== 1 ? 's' : ''}
+                      </span>
                     </div>
                     <div className={`flex items-center ${
-                      isActif ? (daysLeft <= 7 ? 'text-yellow-600' : 'text-green-600') : 
+                      isActif ? (daysLeft <= 7 ? 'text-yellow-600' : 'text-green-600') :
                               isSousEvaluation ? 'text-yellow-600' : 'text-purple-600'
                     }`}>
                       <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
-                      {isActif ? `${t('offer.closes')} ${deadlineDate.toLocaleDateString()}` : 
-                       isSousEvaluation ? t('rh.status.sousEvaluation') : 
+                      {isActif ? `${t('offer.closes')} ${deadlineDate.toLocaleDateString()}` :
+                       isSousEvaluation ? t('rh.status.sousEvaluation') :
                        t('rh.status.resultat')}
                     </div>
-                    
+
                     {/* Show selected candidate if status is resultat */}
                     {isResultat && offer.winner_name && (
                       <div className="flex items-center text-purple-600">

@@ -8,23 +8,6 @@ import Swal from 'sweetalert2';
 const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer: Offer) => void; onCancel: () => void }) => {
   const { t } = useI18n();
 
-  // Helper function to convert UTC datetime string to local datetime-local format
-  const convertUTCToLocal = (utcString: string): string => {
-    const utcDate = new Date(utcString + (utcString.includes('T') ? '' : 'T') + (utcString.includes('Z') ? '' : 'Z'));
-    const year = utcDate.getFullYear();
-    const month = String(utcDate.getMonth() + 1).padStart(2, '0');
-    const day = String(utcDate.getDate()).padStart(2, '0');
-    const hours = String(utcDate.getHours()).padStart(2, '0');
-    const minutes = String(utcDate.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  };
-
-  // Helper function to convert local datetime-local format to UTC for backend
-  const convertLocalToUTC = (localString: string): string => {
-    const localDate = new Date(localString);
-    return localDate.toISOString().slice(0, 19).replace('T', ' ');
-  };
-
   const [formData, setFormData] = useState({
     type: offer?.type || 'travaux',
     method: offer?.method || 'entente_directe',
@@ -32,7 +15,7 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
     description: offer?.description || '',
     country: offer?.country || '',
     reference: offer?.reference || '',
-    deadline: offer?.deadline ? convertUTCToLocal(offer.deadline) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16), // YYYY-MM-DDTHH:MM
+    deadline: offer?.deadline || '',
     tdr: null as File | null,
   });
   
@@ -485,18 +468,9 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
     const token = localStorage.getItem('token');
     const formDataToSend = new FormData();
 
-    // Format deadline for backend - convert local time to UTC (YYYY-MM-DD HH:MM:SS)
-    const formattedDeadline = formData.deadline
-      ? convertLocalToUTC(formData.deadline)
-      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
-
     Object.entries(formData).forEach(([key, value]) => {
       if (key !== 'tdr' && value != null) {
-        if (key === 'deadline') {
-          formDataToSend.append(key, formattedDeadline);
-        } else {
-          formDataToSend.append(key, String(value));
-        }
+        formDataToSend.append(key, String(value));
       }
     });
     if (formData.tdr) formDataToSend.append('tdr', formData.tdr);
@@ -740,43 +714,18 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
       </div>
       
       <div className="space-y-2">
-        <label htmlFor="deadline" className="block text-sm font-semibold text-gray-800 mb-2">{t('rh.form.deadline')} (Date & Time)</label>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="deadline_date" className="block text-xs font-medium text-gray-600 mb-1">Date</label>
-            <input
-              type="date"
-              id="deadline_date"
-              name="deadline_date"
-              className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
-              value={formData.deadline ? formData.deadline.split('T')[0] : ''}
-              onChange={(e) => {
-                const date = e.target.value;
-                const time = formData.deadline ? formData.deadline.split('T')[1] || '23:59' : '23:59';
-                setFormData(prev => ({ ...prev, deadline: `${date}T${time}` }));
-              }}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="deadline_time" className="block text-xs font-medium text-gray-600 mb-1">Time (HH:MM)</label>
-            <input
-              type="time"
-              id="deadline_time"
-              name="deadline_time"
-              className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
-              value={formData.deadline ? formData.deadline.split('T')[1] || '23:59' : '23:59'}
-              onChange={(e) => {
-                const time = e.target.value;
-                const date = formData.deadline ? formData.deadline.split('T')[0] : new Date().toISOString().split('T')[0];
-                setFormData(prev => ({ ...prev, deadline: `${date}T${time}` }));
-              }}
-              required
-            />
-          </div>
-        </div>
+        <label htmlFor="deadline" className="block text-sm font-semibold text-gray-800 mb-2">{t('rh.form.deadline')}</label>
+        <input
+          type="datetime-local"
+          id="deadline"
+          name="deadline"
+          className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+          value={formData.deadline}
+          onChange={handleChange}
+          required
+        />
         <p className="text-xs text-gray-500 mt-1">
-          Applications will not be accepted after this exact date and time.
+          Select the exact date and time when applications will close.
         </p>
       </div>
       

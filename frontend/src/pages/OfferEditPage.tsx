@@ -72,8 +72,8 @@ const OfferEditPage = () => {
 
       // Create FormData for file upload
       const submitData = new FormData();
-      
-      // Add basic offer fields
+
+      // Add basic offer fields (deadline will be sent as-is from offer data)
       submitData.append('type', updatedOffer.type);
       submitData.append('method', updatedOffer.method);
       submitData.append('title', updatedOffer.title);
