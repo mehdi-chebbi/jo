@@ -25,6 +25,7 @@ const FAQModal = ({ offerId, offerDeadline, isOpen, onClose }: FAQModalProps) =>
   const [error, setError] = useState('');
   const [showAskForm, setShowAskForm] = useState(false);
   const [newQuestion, setNewQuestion] = useState('');
+  const [questionerEmail, setQuestionerEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Calculate days remaining until deadline
@@ -85,9 +86,15 @@ const FAQModal = ({ offerId, offerDeadline, isOpen, onClose }: FAQModalProps) =>
     }
   };
 
+  // Email validation function
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+    return emailRegex.test(email.trim());
+  };
+
   const handleSubmitQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!newQuestion.trim()) {
       await Swal.fire({
         icon: 'warning',
@@ -98,19 +105,43 @@ const FAQModal = ({ offerId, offerDeadline, isOpen, onClose }: FAQModalProps) =>
       return;
     }
 
+    if (!questionerEmail.trim()) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Validation Error',
+        text: 'Please provide your email address to receive the answer',
+        confirmButtonText: 'OK'
+      });
+      return;
+    }
+
+    if (!validateEmail(questionerEmail)) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Validation Error',
+        text: 'Please enter a valid email address (e.g., user@example.com)',
+        confirmButtonText: 'OK'
+      });
+      return;
+    }
+
     setIsSubmitting(true);
-    
+
     try {
       const response = await fetch(`${API_BASE_URL}/offers/${offerId}/questions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ question: newQuestion.trim() }),
+        body: JSON.stringify({
+          question: newQuestion.trim(),
+          questioner_email: questionerEmail.trim()
+        }),
       });
 
       if (response.ok) {
         setNewQuestion('');
+        setQuestionerEmail('');
         setShowAskForm(false);
         // Show success message
         await Swal.fire({
@@ -240,6 +271,25 @@ const FAQModal = ({ offerId, offerDeadline, isOpen, onClose }: FAQModalProps) =>
                         placeholder={t('askQuestion.placeholder')}
                         value={newQuestion}
                         onChange={(e) => setNewQuestion(e.target.value)}
+                        disabled={!canSubmitQuestions}
+                      />
+                      {!canSubmitQuestions && (
+                        <p className="text-xs text-orange-600 mt-1">
+                          ⏰ {t('askQuestion.disabledNotice')}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                        Email Address *
+                      </label>
+                      <input
+                        id="email"
+                        type="email"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="your.email@example.com"
+                        value={questionerEmail}
+                        onChange={(e) => setQuestionerEmail(e.target.value)}
                         disabled={!canSubmitQuestions}
                       />
                       {!canSubmitQuestions && (

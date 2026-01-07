@@ -30,7 +30,7 @@ const en: Translations = {
   'nav.dashboard': 'Dashboard',
   'nav.hr': 'Committee Management',
   'nav.admin': 'Administration',
-
+'askQuestion.error.empty': 'Question cannot be empty',
   'role.admin': 'Administrator',
   'role.comite_ajout': 'Comité d\'Ajout',
   'role.comite_ouverture': 'Comité d\'Ouverture',
@@ -685,7 +685,7 @@ const fr: Translations = {
   'form.otherDocuments.addButton': 'Ajouter un Document',
   'form.otherDocuments.namePlaceholder': 'Nom du document',
   'form.otherDocuments.help': 'Ajoutez tous les documents de soutien que vous pensez pouvoir aider votre candidature',
-
+'askQuestion.error.empty': 'Question ne peut pas etre vide',
   'about.badge': 'Organisation internationale • Vocation africaine',
   'about.title': "À propos de l'",
   'about.p1': "L'Observatoire du Sahara et du Sahel (OSS) est une organisation internationale à vocation africaine, créée en 1992 et basée à Tunis depuis 2000. Elle œuvre principalement à la création et à l'appui de partenariats pour faire face conjointement aux défis liés à la gestion des ressources en eau, ainsi qu'à la mise en œuvre des accords internationaux relatifs à la désertification, à la biodiversité et au changement climatique en Afrique.",

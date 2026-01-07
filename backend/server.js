@@ -196,6 +196,44 @@ function createQuestionNotificationEmail(recipientName, offerTitle, questionText
   `;
 }
 
+// Create email template for question answered notification (English)
+function createQuestionAnsweredEmail(questionText, offerTitle) {
+    return `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background-color: #d4edda; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                <h2 style="color: #155724; margin: 0;">Your Question Has Been Answered</h2>
+            </div>
+
+            <div style="padding: 20px; background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 8px;">
+                <p style="color: #495057; font-size: 16px;">Hello,</p>
+
+                <p style="color: #495057; font-size: 14px;">
+                    Your question has been answered concerning the offer below:
+                </p>
+
+                <div style="background-color: #e9ecef; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                    <p style="margin: 5px 0;"><strong>Offer:</strong> ${offerTitle}</p>
+                </div>
+
+                <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                    <p style="margin: 0 0 10px 0; font-weight: bold; color: #856404;">Your question:</p>
+                    <p style="margin: 0; color: #495057; font-style: italic;">"${questionText}"</p>
+                </div>
+
+                <p style="color: #495057; font-size: 14px;">
+                    Please check the platform to view the answer.
+                </p>
+
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                    <p style="color: #6c757d; font-size: 12px; margin: 0;">
+                        This is an automated notification from the HR Job Portal
+                    </p>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 // Enhanced email sending function using Microsoft Graph API
 async function sendEmailWithGraphAPI(to, subject, htmlContent, textContent = null) {
     try {
@@ -751,6 +789,7 @@ let pool;
         id INT AUTO_INCREMENT PRIMARY KEY,
         offer_id INT NOT NULL,
         question TEXT NOT NULL,
+        questioner_email VARCHAR(255) NULL,
         answer TEXT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         answered_at TIMESTAMP NULL,
@@ -2610,10 +2649,18 @@ app.post('/test-email', auth, requireRole('admin'), async (req, res) => {
 app.post('/offers/:id/questions', async (req, res) => {
   try {
     const { id } = req.params;
-    const { question } = req.body;
+    const { question, questioner_email } = req.body;
 
     if (!question || question.trim() === '') {
       return res.status(400).json({ error: 'Question is required' });
+    }
+
+    // Validate email format if provided
+    if (questioner_email && questioner_email.trim()) {
+      const emailRegex = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+      if (!emailRegex.test(questioner_email.trim())) {
+        return res.status(400).json({ error: 'Invalid email address' });
+      }
     }
 
     // Check if offer exists and is active
@@ -2634,8 +2681,8 @@ app.post('/offers/:id/questions', async (req, res) => {
 
     // Insert the question
     const [result] = await pool.query(
-      'INSERT INTO questions (offer_id, question) VALUES (?, ?)',
-      [id, question.trim()]
+      'INSERT INTO questions (offer_id, question, questioner_email) VALUES (?, ?, ?)',
+      [id, question.trim(), questioner_email ? questioner_email.trim() : null]
     );
 
     // Send email notifications to Comité d'Ouverture and notification emails
@@ -2743,7 +2790,7 @@ app.put('/questions/:id/answer', auth, requireRole(['comite_ajout', 'comite_ouve
 
     // Get the question and check if the offer is still active
     const [questions] = await pool.query(
-      `SELECT q.*, o.status as offer_status, o.deadline
+      `SELECT q.*, o.status as offer_status, o.deadline, o.title as offer_title
        FROM questions q
        JOIN offers o ON q.offer_id = o.id
        WHERE q.id = ?`,
@@ -2770,7 +2817,35 @@ app.put('/questions/:id/answer', auth, requireRole(['comite_ajout', 'comite_ouve
       [answer.trim(), id]
     );
 
-    res.json({ message: 'Answer submitted successfully' });
+    // Send email notification to questioner if email is provided
+    let emailSent = true;
+    let emailError = null;
+    if (question.questioner_email) {
+      try {
+        await sendEmailWithGraphAPI(
+          question.questioner_email,
+          `Question concerning offer ${question.offer_title}`,
+          createQuestionAnsweredEmail(question.question, question.offer_title)
+        );
+        console.log(`Question answered notification sent to ${question.questioner_email}`);
+        logAction(`System sent question answered notification to ${question.questioner_email}`);
+      } catch (emailErr) {
+        console.error('Failed to send question answered notification:', emailErr.message);
+        emailSent = false;
+        emailError = emailErr.message;
+      }
+    }
+
+    // Return success with email status
+    if (emailSent) {
+      res.json({ message: 'Answer submitted successfully' });
+    } else {
+      res.json({
+        message: 'Answer submitted successfully',
+        emailSent: false,
+        emailError: 'Email notification failed because address is invalid'
+      });
+    }
 
   } catch (err) {
     console.error('Answer question error:', err);

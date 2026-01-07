@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import type { Question } from '../types';
 import { API_BASE_URL } from '../config';
 import { useI18n } from '../i18n';
+import Swal from 'sweetalert2';
 
 const AnswerQuestionsPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -69,6 +70,18 @@ const AnswerQuestionsPage = () => {
       });
 
       if (response.ok) {
+        const data = await response.json();
+
+        // Check if email was sent successfully
+        if (data.emailSent === false && data.emailError) {
+          await Swal.fire({
+            icon: 'warning',
+            title: 'Answer Saved',
+            text: data.emailError,
+            confirmButtonText: 'OK'
+          });
+        }
+
         setAnswer('');
         setSelectedQuestion(null);
         setEditingMode(false);
