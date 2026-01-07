@@ -106,7 +106,12 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
       const matchesLocationType = filters.locationType ? 
         (filters.locationType === 'National' ? offer.country === 'Tunisia' || offer.country === 'Tunisie' : 
          offer.country !== 'Tunisia' && offer.country !== 'Tunisie') : true;
-      const matchesStatus = filters.status ? offer.status === filters.status : true;
+      
+      // Updated status filter logic: "resultat" now includes both "resultat" and "infructueux"
+      const matchesStatus = filters.status ? 
+        (filters.status === 'resultat' ? 
+          (offer.status === 'resultat' || offer.status === 'infructueux') : 
+          offer.status === filters.status) : true;
       
       return matchesCategory && matchesLocationType && matchesStatus;
     });
@@ -185,11 +190,11 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
     offer.country === 'Tunisia' || offer.country === 'Tunisie' ? 'National' : 'International'
   )));
   
+  // Updated to only 3 status options
   const statusOptions = [
     { value: 'actif', label: t('filters.status.actif') },
     { value: 'sous_evaluation', label: t('filters.status.sousEvaluation') },
-    { value: 'resultat', label: t('filters.status.resultat') },
-    { value: 'infructueux', label: t('filters.status.infructueux') }
+    { value: 'resultat', label: t('filters.status.resultat') }
   ];
   
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
