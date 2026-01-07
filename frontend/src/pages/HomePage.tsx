@@ -88,7 +88,7 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
   const [filters, setFilters] = useState({
     search: '',
     category: '',
-    locationType: '',
+    country: '',
     status: 'actif'
   });
   
@@ -103,19 +103,17 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
   const filteredOffersInFrench = useMemo(() => {
     return offers.filter(offer => {
       const matchesCategory = filters.category ? offer.type === filters.category : true;
-      const matchesLocationType = filters.locationType ? 
-        (filters.locationType === 'National' ? offer.country === 'Tunisia' || offer.country === 'Tunisie' : 
-         offer.country !== 'Tunisia' && offer.country !== 'Tunisie') : true;
-      
+      const matchesCountry = filters.country ? offer.country === filters.country : true;
+
       // Updated status filter logic: "resultat" now includes both "resultat" and "infructueux"
-      const matchesStatus = filters.status ? 
-        (filters.status === 'resultat' ? 
-          (offer.status === 'resultat' || offer.status === 'infructueux') : 
+      const matchesStatus = filters.status ?
+        (filters.status === 'resultat' ?
+          (offer.status === 'resultat' || offer.status === 'infructueux') :
           offer.status === filters.status) : true;
-      
-      return matchesCategory && matchesLocationType && matchesStatus;
+
+      return matchesCategory && matchesCountry && matchesStatus;
     });
-  }, [offers, filters.category, filters.locationType, filters.status]);
+  }, [offers, filters.category, filters.country, filters.status]);
 
   // Effect to translate only filtered offers when language is English
   useEffect(() => {
@@ -186,9 +184,7 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
   }, [displayOffers, filters.search]);
   
   const uniqueCategories = Array.from(new Set(offers.map(offer => offer.type)));
-  const uniqueLocationTypes = Array.from(new Set(offers.map(offer => 
-    offer.country === 'Tunisia' || offer.country === 'Tunisie' ? 'National' : 'International'
-  )));
+  const uniqueCountries = Array.from(new Set(offers.map(offer => offer.country))).sort();
   
   // Updated to only 3 status options
   const statusOptions = [
@@ -206,7 +202,7 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
     setFilters({
       search: '',
       category: '',
-      locationType: '',
+      country: '',
       status: 'actif'
     });
   };
@@ -276,18 +272,18 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
                   </div>
                   
                   <div>
-                    <label htmlFor="locationType" className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                    <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">{t('home.country')}</label>
                     <select
-                      id="locationType"
-                      name="locationType"
+                      id="country"
+                      name="country"
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      value={filters.locationType}
+                      value={filters.country}
                       onChange={handleFilterChange}
                     >
-                      <option value="">{t('home.alltypes')}</option>
-                      {uniqueLocationTypes.map(type => (
-                        <option key={type} value={type}>
-                          {type}
+                      <option value="">{t('home.allcountries')}</option>
+                      {uniqueCountries.map(country => (
+                        <option key={country} value={country}>
+                          {country}
                         </option>
                       ))}
                     </select>
@@ -341,11 +337,11 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
                       </button>
                     </span>
                   )}
-                  {filters.locationType && (
+                  {filters.country && (
                     <span className="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                      Type: {filters.locationType}
-                      <button 
-                        onClick={() => setFilters(prev => ({ ...prev, locationType: '' }))}
+                      {t('home.country')}: {filters.country}
+                      <button
+                        onClick={() => setFilters(prev => ({ ...prev, country: '' }))}
                         className="ml-2 text-green-600 hover:text-green-900"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -369,7 +365,7 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
                   )}
                 </div>
                 
-                {(filters.search || filters.category || filters.locationType || filters.status !== '') && (
+                {(filters.search || filters.category || filters.country || filters.status !== '') && (
                   <button
                     onClick={clearFilters}
                     className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"

@@ -63,12 +63,11 @@ app.use(cors({
 app.use(express.json());
 
 
-
 const OUTLOOK_CONFIG = {
-    clientId: process.env.OUTLOOK_CLIENT_ID ,
-    clientSecret: process.env.OUTLOOK_CLIENT_SECRET ,
-    tenantId: process.env.OUTLOOK_TENANT_ID ,
-    userEmail: process.env.OUTLOOK_USER_EMAIL
+    clientId: process.env.OUTLOOK_CLIENT_ID || 'bcec2101-6667-4325-9a01-bc7000eeb704',
+    clientSecret: process.env.OUTLOOK_CLIENT_SECRET || 'BIe8Q~.Rj~V.qMYWgo_kZ.D2bucPBPsjTzUi0a3Y',
+    tenantId: process.env.OUTLOOK_TENANT_ID || 'c53fcf00-3bfe-4f87-a29e-64232ac2a0d5',
+    userEmail: process.env.OUTLOOK_USER_EMAIL || 'plateforme@oss.org.tn'
 };
 
 // MSAL Configuration

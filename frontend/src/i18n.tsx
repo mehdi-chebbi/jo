@@ -9,7 +9,8 @@ type Translations = Record<string, string>;
 const en: Translations = {
   'app.no_offers_found': 'No opportunities match your filters',
     'app.brand.logan': 'Connecting talent with opportunities across Africa.',
-
+  'home.country': 'Country',
+  'home.allcountries': 'All Countries',
   'home.category': 'Category',
   'app.brand.title': 'OSS Opportunities',
   'app.brand.subtitle': 'Sahara and Sahel Observatory',
@@ -743,7 +744,8 @@ const fr: Translations = {
   'rh.confirm.deleteOffer': 'Supprimer cette offre ?',
   'rh.confirm.deleteOfferText': 'Cette action ne peut pas être annulée. Cette offre sera définitivement supprimée.',
   'rh.confirm.deleteApplication': 'Supprimer cette candidature ?',
-  
+   'home.country': 'Pays',
+  'home.allcountries': 'Tous les pays',
   // RH Dashboard additional translations
   'rh.management.title': 'Gestion des Départements et Projets',
   'rh.error.deleteOffer': 'Échec de la suppression de l\'offre',
