@@ -16,26 +16,21 @@ const app = express();
 
 // Helper function to get current time in MySQL format (Tunisia UTC+1)
 function getLocalTime() {
-  // Always return Tunisia time (UTC+1) regardless of server timezone
   const now = new Date();
-  const utc = now.getTime() + (now.getTimezoneOffset() * 60000); // Get UTC timestamp (add timezone offset to get UTC)
-  const tunisiaTime = new Date(utc + 3600000); // Add 1 hour (3600000ms) for UTC+1
-
-  const year = tunisiaTime.getFullYear();
-  const month = String(tunisiaTime.getMonth() + 1).padStart(2, '0');
-  const day = String(tunisiaTime.getDate()).padStart(2, '0');
-  const hours = String(tunisiaTime.getHours()).padStart(2, '0');
-  const minutes = String(tunisiaTime.getMinutes()).padStart(2, '0');
-  const seconds = String(tunisiaTime.getSeconds()).padStart(2, '0');
+  // Since the server is already in Tunisia time (UTC+1), we don't need to add anything
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 // Helper function to get current Date object in Tunisia time
 function getLocalDate() {
-  // Always return Tunisia time (UTC+1) regardless of server timezone
-  const now = new Date();
-  const utc = now.getTime() + (now.getTimezoneOffset() * 60000); // Get UTC timestamp (add timezone offset to get UTC)
-  return new Date(utc + 3600000); // Add 1 hour (3600000ms) for UTC+1
+  // Since the server is already in Tunisia time (UTC+1), we can just return new Date()
+  return new Date();
 }
 
 const allowedOrigins = [
@@ -373,41 +368,6 @@ function createExpirationNotificationEmail(recipientName, offerTitle, deadline) 
     `;
 }
 
-function createFiveDayExpirationNotificationEmail(recipientName, offerTitle, deadline, candidateCount) {
-    return `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                <h2 style="color: #1565c0; margin: 0;">Offer Deadline Reminder</h2>
-            </div>
-
-            <div style="padding: 20px; background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 8px;">
-                <p style="color: #495057; font-size: 16px;">Hello <strong>${recipientName}</strong>,</p>
-
-                <p style="color: #495057; font-size: 14px;">
-                    Your job offer is approaching its deadline:
-                </p>
-
-                <div style="background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #1565c0;">
-                    <p style="margin: 5px 0;"><strong>Offer:</strong> ${offerTitle}</p>
-                    <p style="margin: 5px 0;"><strong>Deadline:</strong> ${deadline}</p>
-                    <p style="margin: 5px 0;"><strong>Time Remaining:</strong> 5 days</p>
-                    <p style="margin: 5px 0;"><strong>Candidates:</strong> ${candidateCount}</p>
-                </div>
-
-                <p style="color: #495057; font-size: 14px;">
-                    Please log into the HR portal to review your offer and applications.
-                </p>
-
-                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
-                    <p style="color: #6c757d; font-size: 12px; margin: 0;">
-                        This is an automated notification from the HR Job Portal
-                    </p>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
 function createUpcomingExpirationNotificationEmail(recipientName, offerTitle, deadline, daysUntilExpiration) {
     const urgencyColor = daysUntilExpiration === 1 ? '#f8d7da' : '#fff3cd';
     const urgencyTextColor = daysUntilExpiration === 1 ? '#721c24' : '#856404';
@@ -518,7 +478,6 @@ const DB_CONFIG = {
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'rh_app', // optional fallback
   port: Number(process.env.DB_PORT) || 3306,
-  timezone: '+01:00', // Tunisia time (UTC+1) - ensures all timestamps are in Tunisia time
 };
 
 const JWT_SECRET = 'your_jwt_secret'; // Use env var in production
@@ -620,17 +579,6 @@ let pool;
       console.log('removed_default_documents column added to offers table');
     } catch (error) {
       console.log('removed_default_documents column already exists or error adding it:', error.message);
-    }
-
-    // Add five_day_notified column if it doesn't exist (for 5-day expiration warning)
-    try {
-      await pool.query(`
-        ALTER TABLE offers
-        ADD COLUMN IF NOT EXISTS five_day_notified BOOLEAN DEFAULT FALSE
-      `);
-      console.log('five_day_notified column added to offers table');
-    } catch (error) {
-      console.log('five_day_notified column already exists or error adding it:', error.message);
     }
 
     await pool.query(`
@@ -1031,15 +979,13 @@ app.put('/projects/:id', auth, requireRole('comite_ajout'), async (req, res) => 
   try {
     // Verify project and department belong to comite_ajout users
     const [projectCheck] = await pool.query(`
-      SELECT p.created_by, d.created_by as dept_created_by, u.role as creator_role
+      SELECT p.id
       FROM projects p
-      LEFT JOIN departments d ON p.department_id = d.id
-      LEFT JOIN users u ON p.created_by = u.id
       WHERE p.id = ?
     `, [id]);
 
-    if (projectCheck.length === 0 || projectCheck[0].creator_role !== 'comite_ajout') {
-      return res.status(403).json({ error: 'Project not found or access denied' });
+    if (projectCheck.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
     }
 
     const [deptCheck] = await pool.query(`
@@ -1296,9 +1242,14 @@ app.post('/offers', auth, requireRole('comite_ajout'), uploadTdr.single('tdr'), 
       return res.status(400).json({ error: 'TDR must be a PDF file' });
     }
 
-    // Verify project belongs to user
-    const [projectCheck] = await pool.query('SELECT created_by FROM projects WHERE id = ?', [project_id]);
-    if (projectCheck.length === 0 || projectCheck[0].created_by !== req.user.id) {
+    // Verify project belongs to any comite_ajout user
+    const [projectCheck] = await pool.query(`
+      SELECT p.created_by, u.role
+      FROM projects p
+      LEFT JOIN users u ON p.created_by = u.id
+      WHERE p.id = ?
+    `, [project_id]);
+    if (projectCheck.length === 0 || projectCheck[0].role !== 'comite_ajout') {
       return res.status(403).json({ error: 'Project not found or access denied' });
     }
 
@@ -2281,72 +2232,9 @@ async function checkExpiredOffers() {
     const now = getLocalDate(); // Use Tunisia time
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const twoDaysFromNow = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
-    const fiveDaysFromNow = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
 
     // Format dates for comparison (DATETIME format) - using Tunisia time
     const nowStr = getLocalTime();
-
-    // Check for offers expiring in 5 days (5-day warning) - haven't been notified for 5-day warning
-    const [expiringInFiveDaysOffers] = await pool.query(`
-      SELECT o.*, u.name as hr_name, u.email as hr_email
-      FROM offers o
-      JOIN users u ON o.created_by = u.id
-      WHERE o.deadline <= ? AND o.deadline > ? AND (o.five_day_notified IS NULL OR o.five_day_notified = FALSE)
-    `, [fiveDaysFromNow, twoDaysFromNow]);
-
-    for (const offer of expiringInFiveDaysOffers) {
-      try {
-        // Get candidate count for this offer
-        const [candidateCountResult] = await pool.query(
-          'SELECT COUNT(*) as candidate_count FROM applications WHERE offer_id = ?',
-          [offer.id]
-        );
-        const candidateCount = candidateCountResult[0].candidate_count;
-
-        // Send 5-day expiration warning notifications
-        let notificationEmails = [];
-        if (offer.notification_emails) {
-          try {
-            notificationEmails = JSON.parse(offer.notification_emails);
-          } catch (e) {
-            console.error('Error parsing notification emails for offer', offer.id, ':', e.message);
-          }
-        }
-
-        // Add HR creator email to the notification list if not already included
-        if (offer.hr_email && !notificationEmails.includes(offer.hr_email)) {
-          notificationEmails.unshift(offer.hr_email); // Add HR email first
-        }
-
-        if (notificationEmails.length > 0) {
-          for (const email of notificationEmails) {
-            try {
-              const isHR = email === offer.hr_email;
-              const recipientName = isHR ? offer.hr_name : 'Notification Recipient';
-
-              await sendEmailWithGraphAPI(
-                email,
-                `Offer Deadline Reminder: 5 Days Remaining - ${offer.title}`,
-                createFiveDayExpirationNotificationEmail(recipientName, offer.title, offer.deadline, candidateCount)
-              );
-
-              const recipientType = isHR ? 'HR creator' : 'notification email';
-              logAction(`System sent 5-day expiration warning for offer "${offer.title}" to ${email} (${recipientType})`);
-              console.log(`📧 5-day warning email sent to ${email} for offer "${offer.title}" with ${candidateCount} candidates`);
-            } catch (emailError) {
-              console.error(`Failed to send 5-day warning email to ${email} for offer ${offer.title}:`, emailError.message);
-            }
-          }
-        }
-        // Mark as notified for 5-day warning
-        await pool.query('UPDATE offers SET five_day_notified = TRUE WHERE id = ?', [offer.id]);
-
-        logAction(`System processed 5-day warning for offer "${offer.title}" with ${notificationEmails.length} notification emails and ${candidateCount} candidates`);
-
-      } catch (error) {
-        console.error(`Error processing 5-day warning for offer ${offer.title}:`, error.message);
-      }
-    }
 
     // Check for offers expiring in the next 24 hours (1 day warning) - haven't been notified for 1-day warning
     const [expiringTomorrowOffers] = await pool.query(`
