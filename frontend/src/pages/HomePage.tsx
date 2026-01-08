@@ -10,6 +10,8 @@ const translationCache = new Map<string, string>();
 // Self-hosted LibreTranslate API
 const LIBRETRANSLATE_API = 'http://192.168.2.126';
 
+const ITEMS_PER_PAGE = 9;
+
 const translateText = async (text: string): Promise<string> => {
   if (!text || text.trim() === '') return text;
   
@@ -92,6 +94,7 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
     status: 'actif'
   });
   
+  const [currentPage, setCurrentPage] = useState(1);
   const [translatedOffers, setTranslatedOffers] = useState<Map<string, Offer>>(new Map());
   const [isTranslating, setIsTranslating] = useState(false);
   
@@ -115,73 +118,118 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
     });
   }, [offers, filters.category, filters.country, filters.status]);
 
-  // Effect to translate only filtered offers when language is English
+  // Apply search filter in French (before translation)
+  const searchFilteredOffers = useMemo(() => {
+    return filteredOffersInFrench.filter(offer => {
+      const matchesSearch = offer.title.toLowerCase().includes(filters.search.toLowerCase()) ||
+                           offer.description.toLowerCase().includes(filters.search.toLowerCase());
+      return matchesSearch;
+    });
+  }, [filteredOffersInFrench, filters.search]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters.search, filters.category, filters.country, filters.status]);
+
+  // Pagination calculations (on French offers, before translation)
+  const totalPages = Math.ceil(searchFilteredOffers.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const currentPageOffers = searchFilteredOffers.slice(startIndex, endIndex);
+
+  // Effect to translate ONLY the current page offers when language is English
   useEffect(() => {
     const handleTranslation = async () => {
       if (lang === 'en') {
-        setIsTranslating(true);
-        console.log(`🌍 Starting translation for ${filteredOffersInFrench.length} filtered offers`);
+        // Get the offers on the current page that need translation
+        const offersToTranslate = currentPageOffers.filter(offer => !translatedOffers.has(String(offer.id)));
         
-        try {
-          // Only translate the filtered offers
-          const translated = await Promise.all(
-            filteredOffersInFrench.map((offer, index) => 
-              new Promise<Offer>(resolve => 
-                setTimeout(() => translateOfferAsync(offer).then(resolve), index * 100)
+        if (offersToTranslate.length > 0) {
+          setIsTranslating(true);
+          console.log(`🌍 Starting translation for ${offersToTranslate.length} offers on page ${currentPage}`);
+          
+          try {
+            // Translate only the offers on this page that aren't already translated
+            const translated = await Promise.all(
+              offersToTranslate.map((offer, index) => 
+                new Promise<Offer>(resolve => 
+                  setTimeout(() => translateOfferAsync(offer).then(resolve), index * 100)
+                )
               )
-            )
-          );
-          
-          // Store translations in a Map for quick lookup
-          const translationMap = new Map<string, Offer>();
-          translated.forEach(offer => {
-            translationMap.set(offer.id, offer);
-          });
-          
-          console.log(`✅ Translation complete! ${translationMap.size} offers translated`);
-          setTranslatedOffers(translationMap);
-        } catch (error) {
-          console.error('❌ Translation failed:', error);
-          setTranslatedOffers(new Map());
-        } finally {
-          setIsTranslating(false);
+            );
+            
+            // Add new translations to the existing Map
+            setTranslatedOffers(prev => {
+              const updated = new Map(prev);
+              translated.forEach(offer => {
+                updated.set(String(offer.id), offer);
+              });
+              return updated;
+            });
+            
+            console.log(`✅ Translation complete! ${translated.length} new offers translated`);
+          } catch (error) {
+            console.error('❌ Translation failed:', error);
+          } finally {
+            setIsTranslating(false);
+          }
         }
       } else {
         // If French, clear translations
-        console.log('🇫🇷 Switching to French, clearing translations');
-        setTranslatedOffers(new Map());
+        if (translatedOffers.size > 0) {
+          console.log('🇫🇷 Switching to French, clearing translations');
+          setTranslatedOffers(new Map());
+        }
         setIsTranslating(false);
       }
     };
 
     handleTranslation();
-  }, [filteredOffersInFrench, lang]);
+  }, [lang, currentPage, currentPageOffers.map(o => o.id).join(',')]);
 
-  // Get the current offers to display (translated or original)
-  const displayOffers = useMemo(() => {
-    if (lang === 'en' && translatedOffers.size > 0) {
-      // Use translated versions
-      return filteredOffersInFrench.map(offer => {
-        const translated = translatedOffers.get(offer.id);
-        if (translated) {
-          return translated;
-        } else {
-          console.warn(`⚠️ No translation found for offer ${offer.id}, using original`);
-          return offer;
-        }
+  // Get the final display offers (translated or original)
+  const paginatedDisplayOffers = useMemo(() => {
+    if (lang === 'en') {
+      return currentPageOffers.map(offer => {
+        const translated = translatedOffers.get(String(offer.id));
+        return translated || offer;
       });
     }
-    return filteredOffersInFrench;
-  }, [lang, filteredOffersInFrench, translatedOffers]);
+    return currentPageOffers;
+  }, [lang, currentPageOffers, translatedOffers]);
 
-  // Apply search filter on the display offers (after translation)
-  const finalFilteredOffers = useMemo(() => {
-    return displayOffers.filter(offer => {
-      const matchesSearch = offer.title.toLowerCase().includes(filters.search.toLowerCase()) ||
-                           offer.description.toLowerCase().includes(filters.search.toLowerCase());
-      return matchesSearch;
-    });
-  }, [displayOffers, filters.search]);
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) pages.push(i);
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) pages.push(i);
+      } else {
+        pages.push(1);
+        pages.push('...');
+        pages.push(currentPage - 1);
+        pages.push(currentPage);
+        pages.push(currentPage + 1);
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
   
   const uniqueCategories = Array.from(new Set(offers.map(offer => offer.type)));
   const uniqueCountries = Array.from(new Set(offers.map(offer => offer.country))).sort();
@@ -220,185 +268,249 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
             <div className="w-24 h-1 bg-gradient-to-r from-green-500 to-blue-500 mx-auto rounded-full mt-6"></div>
           </div>
 
-          {isTranslating ? (
-            <div className="flex flex-col justify-center items-center py-32">
-              <div className="animate-spin h-16 w-16 border-4 border-green-600 border-t-transparent rounded-full mb-4"></div>
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 sm:mb-0">{t('filters.title')}</h3>
+              <div className="text-sm text-gray-600">
+                {searchFilteredOffers.length} {searchFilteredOffers.length === 1 ? 'offer' : 'offers'}
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">{t('filters.search')}</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="search"
+                    name="search"
+                    placeholder={t('filters.search.placeholder')}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    value={filters.search}
+                    onChange={handleFilterChange}
+                  />
+                  <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+              </div>
+              
+              <div>
+                <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">{t('home.category')}</label>
+                <select
+                  id="category"
+                  name="category"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  value={filters.category}
+                  onChange={handleFilterChange}
+                >
+                  <option value="">{t('home.allcategory')}</option>
+                  {uniqueCategories.map(category => {
+                    const typeInfo = getOfferTypeOnlyInfo(category);
+                    return (
+                      <option key={category} value={category}>
+                        {typeInfo.name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              
+              <div>
+                <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">{t('home.country')}</label>
+                <select
+                  id="country"
+                  name="country"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  value={filters.country}
+                  onChange={handleFilterChange}
+                >
+                  <option value="">{t('home.allcountries')}</option>
+                  {uniqueCountries.map(country => (
+                    <option key={country} value={country}>
+                      {country}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">{t('filters.status')}</label>
+                <select
+                  id="status"
+                  name="status"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  value={filters.status}
+                  onChange={handleFilterChange}
+                >
+                  {statusOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            <div className="flex flex-wrap gap-2 mb-4">
+              {filters.search && (
+                <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                  {t('filters.search')}: {filters.search}
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, search: '' }))}
+                    className="ml-2 text-blue-600 hover:text-blue-900"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              {filters.category && (
+                <span className="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+                  Categorie: {(() => {
+                    const typeInfo = getOfferTypeOnlyInfo(filters.category);
+                    return typeInfo.name;
+                  })()}
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, category: '' }))}
+                    className="ml-2 text-purple-600 hover:text-purple-900"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              {filters.country && (
+                <span className="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                  {t('home.country')}: {filters.country}
+                  <button
+                    onClick={() => setFilters(prev => ({ ...prev, country: '' }))}
+                    className="ml-2 text-green-600 hover:text-green-900"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              {filters.status && (
+                <span className="inline-flex items-center px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">
+                  {t('filters.status')}: {statusOptions.find(opt => opt.value === filters.status)?.label}
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, status: '' }))}
+                    className="ml-2 text-indigo-600 hover:text-indigo-900"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+            </div>
+            
+            {(filters.search || filters.category || filters.country || filters.status !== '') && (
+              <button
+                onClick={clearFilters}
+                className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {t('app.delete_filters')}
+              </button>
+            )}
+          </div>
+          
+          {searchFilteredOffers.length === 0 ? (
+            <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-green-100">
+              <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-green-100 to-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-10 h-10 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">{t('app.no_offers_found')}</h3>
+              <p className="text-gray-600 mb-6">{t('app.change_filter')}</p>
+              <button
+                onClick={clearFilters}
+                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white font-medium rounded-lg hover:from-green-700 hover:to-green-800 transition-colors"
+              >
+                {t('app.delete_filters')}
+              </button>
             </div>
           ) : (
             <>
-              <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-8">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 sm:mb-0">{t('filters.title')}</h3>
+              {isTranslating && (
+                <div className="flex justify-center items-center py-8 mb-4">
+                  <div className="animate-spin h-8 w-8 border-4 border-green-600 border-t-transparent rounded-full mr-3"></div>
+                  <span className="text-gray-600">Translating...</span>
                 </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                  <div>
-                    <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">{t('filters.search')}</label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        id="search"
-                        name="search"
-                        placeholder={t('filters.search.placeholder')}
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        value={filters.search}
-                        onChange={handleFilterChange}
-                      />
-                      <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">{t('home.category')}</label>
-                    <select
-                      id="category"
-                      name="category"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      value={filters.category}
-                      onChange={handleFilterChange}
-                    >
-                      <option value="">{t('home.allcategory')}</option>
-                      {uniqueCategories.map(category => {
-                        const typeInfo = getOfferTypeOnlyInfo(category);
-                        return (
-                          <option key={category} value={category}>
-                            {typeInfo.name}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">{t('home.country')}</label>
-                    <select
-                      id="country"
-                      name="country"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      value={filters.country}
-                      onChange={handleFilterChange}
-                    >
-                      <option value="">{t('home.allcountries')}</option>
-                      {uniqueCountries.map(country => (
-                        <option key={country} value={country}>
-                          {country}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">{t('filters.status')}</label>
-                    <select
-                      id="status"
-                      name="status"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      value={filters.status}
-                      onChange={handleFilterChange}
-                    >
-                      {statusOptions.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {filters.search && (
-                    <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                      {t('filters.search')}: {filters.search}
-                      <button 
-                        onClick={() => setFilters(prev => ({ ...prev, search: '' }))}
-                        className="ml-2 text-blue-600 hover:text-blue-900"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </span>
-                  )}
-                  {filters.category && (
-                    <span className="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                      Categorie: {(() => {
-                        const typeInfo = getOfferTypeOnlyInfo(filters.category);
-                        return typeInfo.name;
-                      })()}
-                      <button 
-                        onClick={() => setFilters(prev => ({ ...prev, category: '' }))}
-                        className="ml-2 text-purple-600 hover:text-purple-900"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </span>
-                  )}
-                  {filters.country && (
-                    <span className="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                      {t('home.country')}: {filters.country}
-                      <button
-                        onClick={() => setFilters(prev => ({ ...prev, country: '' }))}
-                        className="ml-2 text-green-600 hover:text-green-900"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </span>
-                  )}
-                  {filters.status && (
-                    <span className="inline-flex items-center px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">
-                      {t('filters.status')}: {statusOptions.find(opt => opt.value === filters.status)?.label}
-                      <button 
-                        onClick={() => setFilters(prev => ({ ...prev, status: '' }))}
-                        className="ml-2 text-indigo-600 hover:text-indigo-900"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </span>
-                  )}
-                </div>
-                
-                {(filters.search || filters.category || filters.country || filters.status !== '') && (
-                  <button
-                    onClick={clearFilters}
-                    className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-                  >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    {t('app.delete_filters')}
-                  </button>
-                )}
-              </div>
+              )}
               
-              {finalFilteredOffers.length === 0 ? (
-                <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-green-100">
-                  <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-green-100 to-blue-100 rounded-full flex items-center justify-center">
-                    <svg className="w-10 h-10 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                    </svg>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {paginatedDisplayOffers.map(offer => (
+                  <OfferCard key={offer.id} offer={offer} />
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="text-sm text-gray-600">
+                    Showing {startIndex + 1}-{Math.min(endIndex, searchFilteredOffers.length)} of {searchFilteredOffers.length}
                   </div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">{t('app.no_offers_found')}</h3>
-                  <p className="text-gray-600 mb-6">{t('app.change_filter')}</p>
-                  <button
-                    onClick={clearFilters}
-                    className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white font-medium rounded-lg hover:from-green-700 hover:to-green-800 transition-colors"
-                  >
-                    {t('app.delete_filters')}
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {finalFilteredOffers.map(offer => (
-                    <OfferCard key={offer.id} offer={offer} />
-                  ))}
+                  
+                  <div className="flex items-center gap-2">
+                    {/* Previous Button */}
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        currentPage === 1
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-white text-gray-700 hover:bg-green-50 border border-gray-300'
+                      }`}
+                    >
+                      Previous
+                    </button>
+
+                    {/* Page Numbers */}
+                    <div className="flex gap-1">
+                      {getPageNumbers().map((page, index) => (
+                        page === '...' ? (
+                          <span key={`ellipsis-${index}`} className="px-3 py-2 text-gray-400">
+                            ...
+                          </span>
+                        ) : (
+                          <button
+                            key={page}
+                            onClick={() => setCurrentPage(page as number)}
+                            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                              currentPage === page
+                                ? 'bg-gradient-to-r from-green-600 to-green-700 text-white'
+                                : 'bg-white text-gray-700 hover:bg-green-50 border border-gray-300'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        )
+                      ))}
+                    </div>
+
+                    {/* Next Button */}
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        currentPage === totalPages
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-white text-gray-700 hover:bg-green-50 border border-gray-300'
+                      }`}
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
             </>
