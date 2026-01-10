@@ -8,87 +8,6 @@ import { API_BASE_URL } from '../config';
 import { useI18n } from '../i18n';
 import { showAlert } from '../utils/sweetalertConfig';
 
-// Translation cache to avoid repeated API calls
-const translationCache = new Map<string, string>();
-
-// Self-hosted LibreTranslate API
-const LIBRETRANSLATE_API = 'http://192.168.2.126';
-
-const translateText = async (text: string): Promise<string> => {
-  if (!text || text.trim() === '') return text;
-  
-  // Check cache first
-  const cacheKey = `fr-en:${text}`;
-  if (translationCache.has(cacheKey)) {
-    console.log(`💾 Using cached translation for: "${text}"`);
-    return translationCache.get(cacheKey)!;
-  }
-
-  // Use self-hosted LibreTranslate API directly
-  try {
-    console.log(`🔄 API call for: "${text}"`);
-    const response = await fetch(`${LIBRETRANSLATE_API}/translate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        q: text,
-        source: 'fr',
-        target: 'en',
-        format: 'text'
-      })
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.translatedText) {
-        console.log(`✅ API translated: "${text}" → "${data.translatedText}"`);
-        translationCache.set(cacheKey, data.translatedText);
-        return data.translatedText;
-      }
-    } else {
-      console.warn(`⚠️ API request failed with status ${response.status} for: "${text}"`);
-    }
-  } catch (error) {
-    console.error('❌ LibreTranslate API error:', error);
-  }
-
-  // Fallback: return original text
-  console.log('⚠️ Translation unavailable, using original:', text);
-  return text;
-};
-
-// Function to translate an offer with API calls
-const translateOfferAsync = async (offer: Offer): Promise<Offer> => {
-  try {
-    console.log(`🔄 Translating offer: ${offer.id} - "${offer.title}"`);
-    
-    const [translatedTitle, translatedDescription, translatedCountry, translatedDepartment, translatedProjectName] = await Promise.all([
-      translateText(offer.title),
-      translateText(offer.description),
-      translateText(offer.country),
-      translateText(offer.department_name || ''),
-      translateText(offer.project_name || ''),
-    ]);
-
-    const translatedOffer = {
-      ...offer,
-      title: translatedTitle,
-      description: translatedDescription,
-      country: translatedCountry,
-      department_name: translatedDepartment,
-      project_name: translatedProjectName,
-    };
-    
-    console.log(`✅ Translated offer ${offer.id}: "${offer.title}" → "${translatedTitle}"`);
-    return translatedOffer;
-  } catch (error) {
-    console.error('❌ Failed to translate offer:', error);
-    return offer;
-  }
-};
-
 // Function to format time remaining
 const formatTimeRemaining = (milliseconds: number, t: (key: string) => string): string => {
   if (milliseconds <= 0) return t('offer.countdown.expired');
@@ -113,9 +32,7 @@ const OfferDetailPage = () => {
   const { t, currentLangPrefix, lang } = useI18n();
   const { id } = useParams<{ id: string }>();
   const [offer, setOffer] = useState<Offer | null>(null);
-  const [translatedOffer, setTranslatedOffer] = useState<Offer | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isTranslating, setIsTranslating] = useState(false);
   const [showApplicationForm, setShowApplicationForm] = useState(false);
   const [showFAQModal, setShowFAQModal] = useState(false);
   const [isDeadlinePassed, setIsDeadlinePassed] = useState(false);
@@ -170,7 +87,8 @@ const OfferDetailPage = () => {
   useEffect(() => {
     const fetchOffer = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/offers/${id}`);
+        // ✅ Add lang parameter to fetch the correct language version
+        const response = await fetch(`${API_BASE_URL}/offers/${id}?lang=${lang}`);
         if (response.ok) {
           const data = await response.json();
           setOffer(data);
@@ -187,30 +105,7 @@ const OfferDetailPage = () => {
     if (id) {
       fetchOffer();
     }
-  }, [id]);
-
-  // Effect to handle translation when language changes
-  useEffect(() => {
-    const handleTranslation = async () => {
-      if (offer && lang === 'en') {
-        setIsTranslating(true);
-        try {
-          const translated = await translateOfferAsync(offer);
-          setTranslatedOffer(translated);
-        } catch (error) {
-          console.error('Translation failed:', error);
-          setTranslatedOffer(offer); // Fallback to original offer
-        } finally {
-          setIsTranslating(false);
-        }
-      } else if (offer) {
-        // If French, use original offer
-        setTranslatedOffer(offer);
-      }
-    };
-
-    handleTranslation();
-  }, [offer, lang]);
+  }, [id, lang]); // ✅ Add lang as dependency to refetch when language changes
 
   if (loading) {
     return (
@@ -237,10 +132,9 @@ const OfferDetailPage = () => {
     );
   }
 
-  const displayOffer = translatedOffer || offer;
-  const deadlineDate = new Date(displayOffer.deadline);
+  const deadlineDate = new Date(offer.deadline);
   const isExpired = isDeadlinePassed; // Use real-time deadline check
-  const offerTypeInfo = getOfferTypeInfo(displayOffer.type) as { name: string; color: string };
+  const offerTypeInfo = getOfferTypeInfo(offer.type) as { name: string; color: string };
   
   return (
     <div className="bg-gray-50 min-h-screen">
@@ -257,177 +151,172 @@ const OfferDetailPage = () => {
           </Link>
         </div>
 
-        {isTranslating ? (
-          <div className="flex justify-center items-center py-32">
-            <div className="animate-spin h-16 w-16 border-4 border-green-600 border-t-transparent rounded-full"></div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-            <div className="p-6 md:p-8">
-              <div className="flex flex-wrap gap-3 mb-4">
-                <span className={`px-3 py-1 text-sm font-semibold rounded-full ${offerTypeInfo.color}`}>
-                  {offerTypeInfo.name}
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="p-6 md:p-8">
+            <div className="flex flex-wrap gap-3 mb-4">
+              <span className={`px-3 py-1 text-sm font-semibold rounded-full ${offerTypeInfo.color}`}>
+                {offerTypeInfo.name}
+              </span>
+              <span className={`px-3 py-1 text-sm font-semibold rounded-full ${isExpired ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                {isExpired ? t('offer.expired') : `${t('offer.closes')} ${deadlineDate.toLocaleDateString()} at ${deadlineDate.toLocaleTimeString()}`}
+              </span>
+              {!isExpired && (
+                <span className="px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
+                  {t('offer.countdown.expiresIn')}: {formatTimeRemaining(deadlineDate.getTime() - currentTime.getTime(), t)}
                 </span>
-                <span className={`px-3 py-1 text-sm font-semibold rounded-full ${isExpired ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
-                  {isExpired ? t('offer.expired') : `${t('offer.closes')} ${deadlineDate.toLocaleDateString()} at ${deadlineDate.toLocaleTimeString()}`}
-                </span>
-                {!isExpired && (
-                  <span className="px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
-                    {t('offer.countdown.expiresIn')}: {formatTimeRemaining(deadlineDate.getTime() - currentTime.getTime(), t)}
-                  </span>
-                )}
-              </div>
-              
-              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">{displayOffer.title}</h1>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('detail.details')}</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-sm text-gray-500">{t('label.reference')}</p>
-                      <p className="font-medium text-gray-900">{displayOffer.reference}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">{t('label.country')}</p>
-                      <p className="font-medium text-gray-900">{displayOffer.country}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">{t('label.department')}</p>
-                      <p className="font-medium text-gray-900">{displayOffer.department_name}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">{t('label.deadline')}</p>
-                      <p className="font-medium text-gray-900">{deadlineDate.toLocaleDateString()} at {deadlineDate.toLocaleTimeString()}</p>
-                    </div>
+              )}
+            </div>
+            
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">{offer.title}</h1>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('detail.details')}</h3>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-gray-500">{t('label.reference')}</p>
+                    <p className="font-medium text-gray-900">{offer.reference}</p>
                   </div>
-                </div>
-                
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('label.description')}</h3>
-                  <div className="bg-gray-50 rounded-lg p-4 h-full">
-                    <p className="text-gray-700 whitespace-pre-line">{displayOffer.description}</p>
+                  <div>
+                    <p className="text-sm text-gray-500">{t('label.country')}</p>
+                    <p className="font-medium text-gray-900">{offer.country}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">{t('label.department')}</p>
+                    <p className="font-medium text-gray-900">{offer.department_name}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">{t('label.deadline')}</p>
+                    <p className="font-medium text-gray-900">{deadlineDate.toLocaleDateString()} at {deadlineDate.toLocaleTimeString()}</p>
                   </div>
                 </div>
               </div>
               
-              <div className="mb-8">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('label.project')} Information</h3>
-                <div className="bg-gray-50 rounded-lg p-4 w-72">
-                  <p className="text-gray-700 whitespace-pre-line">{displayOffer.project_name}</p>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('label.description')}</h3>
+                <div className="bg-gray-50 rounded-lg p-4 h-full">
+                  <p className="text-gray-700 whitespace-pre-line">{offer.description}</p>
                 </div>
-              </div>
-              
-              {/* Selected Candidate Information - Show only if status is 'resultat' and winner_name exists */}
-              {displayOffer.status === 'resultat' && displayOffer.winner_name && (
-                <div className="mb-8">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('rh.candidateDisplay.title')}</h3>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <div className="flex items-center">
-                      <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p className="text-green-800 font-medium">{t('rh.candidateDisplay.label')}</p>
-                    </div>
-                    <p className="text-green-700 mt-2">
-                      {(() => {
-                        const text = t('rh.candidateInfodetails');
-                        const [before, after] = text.split('{candidate}');
-                        return (
-                          <>
-                            {before}
-                            <strong className="font-bold underline text-xl">{displayOffer.winner_name || ''}</strong>
-                            {after}
-                          </>
-                        );
-                      })()}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Infructueux Information - Show only if status is 'infructueux' */}
-              {displayOffer.status === 'infructueux' && (
-                <div className="mb-8">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('rh.infructueuxDisplay.title')}</h3>
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div className="flex items-center">
-                      <svg className="w-5 h-5 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p className="text-red-800 font-medium">{t('rh.infructueuxDisplay.label')}</p>
-                    </div>
-                    <p className="text-red-700 mt-2">
-                      {t('rh.infructueuxInfodetails')}
-                    </p>
-                  </div>
-                </div>
-              )}
-              
-              {displayOffer.tdr_url && (
-                <div className="mb-8">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('label.documents')}</h3>
-                  <button
-                    onClick={async (e) => {
-                      e.preventDefault();
-                      try {
-                        const response = await fetch(`${API_BASE_URL}${displayOffer.tdr_url}`);
-                        if (!response.ok) throw new Error('fetch_fail');
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `TDR_${displayOffer.title}.pdf`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        window.URL.revokeObjectURL(url);
-                      } catch (err) {
-                        showAlert.error(t('offer.downloadTdr.error'));
-                        console.error(err);
-                      }
-                    }}
-                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                  >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    {t('offer.downloadTdr')}
-                  </button>
-                </div>
-              )}
-              
-              <div className="flex flex-wrap gap-4">
-                <Link
-                  to={currentLangPrefix || '/'}
-                  className="px-6 py-3 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-                >
-                  {t('detail.backToOpps')}
-                </Link>
-                
-                {/* FAQ Button - Hide when offer is in sous_evaluation or has a candidate picked or is infructueux */}
-                {displayOffer.status !== 'sous_evaluation' && displayOffer.status !== 'resultat' && displayOffer.status !== 'infructueux' && (
-                  <button
-                    onClick={() => setShowFAQModal(true)}
-                    className="px-6 py-3 bg-purple-600 text-white rounded-md hover:bg-purple-700"
-                  >
-                    {t('faq.button')}
-                  </button>
-                )}
-                
-                {/* Show apply button only if no candidate has been selected and not infructueux */}
-                {displayOffer.status !== 'resultat' && displayOffer.status !== 'sous_evaluation' && displayOffer.status !== 'infructueux' && (
-                  <button
-                    onClick={() => setShowApplicationForm(true)}
-                    className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700"
-                  >
-                    {t('apply.button')}
-                  </button>
-                )}
               </div>
             </div>
+            
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('label.project')} Information</h3>
+              <div className="bg-gray-50 rounded-lg p-4 w-72">
+                <p className="text-gray-700 whitespace-pre-line">{offer.project_name}</p>
+              </div>
+            </div>
+            
+            {/* Selected Candidate Information - Show only if status is 'resultat' and winner_name exists */}
+            {offer.status === 'resultat' && offer.winner_name && (
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('rh.candidateDisplay.title')}</h3>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex items-center">
+                    <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-green-800 font-medium">{t('rh.candidateDisplay.label')}</p>
+                  </div>
+                  <p className="text-green-700 mt-2">
+                    {(() => {
+                      const text = t('rh.candidateInfodetails');
+                      const [before, after] = text.split('{candidate}');
+                      return (
+                        <>
+                          {before}
+                          <strong className="font-bold underline text-xl">{offer.winner_name || ''}</strong>
+                          {after}
+                        </>
+                      );
+                    })()}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Infructueux Information - Show only if status is 'infructueux' */}
+            {offer.status === 'infructueux' && (
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('rh.infructueuxDisplay.title')}</h3>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-center">
+                    <svg className="w-5 h-5 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-red-800 font-medium">{t('rh.infructueuxDisplay.label')}</p>
+                  </div>
+                  <p className="text-red-700 mt-2">
+                    {t('rh.infructueuxInfodetails')}
+                  </p>
+                </div>
+              </div>
+            )}
+            
+            {offer.tdr_url && (
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('label.documents')}</h3>
+                <button
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    try {
+                      // ✅ Add lang parameter to download the correct TDR version
+                      const response = await fetch(`${API_BASE_URL}${offer.tdr_url}?lang=${lang}`);
+                      if (!response.ok) throw new Error('fetch_fail');
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `TDR_${offer.title}.pdf`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+                    } catch (err) {
+                      showAlert.error(t('offer.downloadTdr.error'));
+                      console.error(err);
+                    }
+                  }}
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  {t('offer.downloadTdr')}
+                </button>
+              </div>
+            )}
+            
+            <div className="flex flex-wrap gap-4">
+              <Link
+                to={currentLangPrefix || '/'}
+                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              >
+                {t('detail.backToOpps')}
+              </Link>
+              
+              {/* FAQ Button - Hide when offer is in sous_evaluation or has a candidate picked or is infructueux */}
+              {offer.status !== 'sous_evaluation' && offer.status !== 'resultat' && offer.status !== 'infructueux' && (
+                <button
+                  onClick={() => setShowFAQModal(true)}
+                  className="px-6 py-3 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                >
+                  {t('faq.button')}
+                </button>
+              )}
+              
+              {/* Show apply button only if no candidate has been selected and not infructueux */}
+              {offer.status !== 'resultat' && offer.status !== 'sous_evaluation' && offer.status !== 'infructueux' && (
+                <button
+                  onClick={() => setShowApplicationForm(true)}
+                  className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700"
+                >
+                  {t('apply.button')}
+                </button>
+              )}
+            </div>
           </div>
-        )}
+        </div>
       </div>
       
       {showApplicationForm && (

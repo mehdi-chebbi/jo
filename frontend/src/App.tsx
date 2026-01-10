@@ -55,14 +55,14 @@ const App = () => {
   const [showLogin, setShowLogin] = useState(false);
 
   const [isLoading, setIsLoading] = useState(true);
-  const { t, currentLangPrefix } = useI18n();
+  const { t, currentLangPrefix, lang } = useI18n(); // ✅ Added lang
   const location = useLocation();
   const navigate = useNavigate();
   
   useEffect(() => {
     const fetchOffers = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/offers`);
+        const res = await fetch(`${API_BASE_URL}/offers?lang=${lang}`);
         const data = await res.json();
         setOffers(data);
       } catch (err) {
@@ -87,8 +87,8 @@ const App = () => {
       }
     }
     
-    fetchOffers();
-  }, []);
+  fetchOffers();
+  }, [lang]);
   
   const handleLogin = (userData: User) => {
     setUser(userData);

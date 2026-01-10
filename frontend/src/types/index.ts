@@ -27,6 +27,7 @@ export type Project = {
 
 export type OfferType = 'travaux' | 'prestation_intellectuelle' | 'recrutement' | 'service';
 export type OfferMethod = 'entente_directe' | 'consultation' | 'appel_d_offre';
+export type OfferLanguage = 'fr' | 'en' | 'both';
 
 export type Offer = {
   id: number;
@@ -49,6 +50,13 @@ export type Offer = {
   winner_name?: string | null;
   days_since_expiry?: number;
   can_archive?: boolean;
+  
+  // NEW: Language support fields
+  language: OfferLanguage;
+  title_en?: string | null;
+  description_en?: string | null;
+  tdr_filename_en?: string | null;
+  tdr_filepath_en?: string | null;
 };
 
 export type CustomRequiredDocument = {
