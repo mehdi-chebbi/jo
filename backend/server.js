@@ -1474,14 +1474,19 @@ app.post('/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fields
   }
 });
 
-app.put('/offers/:id', auth, requireRole('comite_ajout'), uploadTdr.single('tdr'), async (req, res) => {
+app.put('/offers/:id', auth, requireRole('comite_ajout'), uploadTdrBilingual.fields([{ name: 'tdr', maxCount: 1 }, { name: 'tdr_en', maxCount: 1 }]), async (req, res) => {
   try {
-    const { type, method, title, description, country, project_id, reference, deadline, notification_emails, custom_documents, removed_default_documents } = req.body;
-    const tdrFile = req.file;
+    const { type, method, title, title_en, description, description_en, country, project_id, reference, deadline, notification_emails, custom_documents, removed_default_documents, language } = req.body;
+    const tdrFile = req.files?.tdr?.[0];
+    const tdrEnFile = req.files?.tdr_en?.[0];
     const { id } = req.params;
 
     if (tdrFile && tdrFile.mimetype !== 'application/pdf') {
       return res.status(400).json({ error: 'TDR must be a PDF file' });
+    }
+
+    if (tdrEnFile && tdrEnFile.mimetype !== 'application/pdf') {
+      return res.status(400).json({ error: 'TDR_EN must be a PDF file' });
     }
 
     // Verify project belongs to comite_ajout user
@@ -1498,11 +1503,13 @@ app.put('/offers/:id', auth, requireRole('comite_ajout'), uploadTdr.single('tdr'
     }
 
     // Get existing TDR info to delete old file if replacing
-    const [existingOffer] = await pool.query('SELECT tdr_filename, tdr_filepath FROM offers WHERE id = ?', [id]);
+    const [existingOffer] = await pool.query('SELECT tdr_filename, tdr_filepath, tdr_filename_en, tdr_filepath_en FROM offers WHERE id = ?', [id]);
     const oldTdrInfo = existingOffer[0];
 
     let tdrFilename = oldTdrInfo?.tdr_filename || null;
     let tdrFilepath = oldTdrInfo?.tdr_filepath || null;
+    let tdrFilenameEn = oldTdrInfo?.tdr_filename_en || null;
+    let tdrFilepathEn = oldTdrInfo?.tdr_filepath_en || null;
 
     if (tdrFile) {
       tdrFilename = tdrFile.filename;
@@ -1511,6 +1518,16 @@ app.put('/offers/:id', auth, requireRole('comite_ajout'), uploadTdr.single('tdr'
       // Delete old TDR file if exists
       if (oldTdrInfo?.tdr_filepath && fs.existsSync(oldTdrInfo.tdr_filepath)) {
         fs.unlinkSync(oldTdrInfo.tdr_filepath);
+      }
+    }
+
+    if (tdrEnFile) {
+      tdrFilenameEn = tdrEnFile.filename;
+      tdrFilepathEn = tdrEnFile.path;
+
+      // Delete old TDR_EN file if exists
+      if (oldTdrInfo?.tdr_filepath_en && fs.existsSync(oldTdrInfo.tdr_filepath_en)) {
+        fs.unlinkSync(oldTdrInfo.tdr_filepath_en);
       }
     }
 
@@ -1543,8 +1560,8 @@ app.put('/offers/:id', auth, requireRole('comite_ajout'), uploadTdr.single('tdr'
     }
 
     await pool.query(
-      `UPDATE offers SET type = ?, method = ?, title = ?, description = ?, country = ?, project_id = ?, reference = ?, deadline = ?, status = ?, winner_name = ?, tdr_filename = ?, tdr_filepath = ?, notification_emails = ?, removed_default_documents = ? WHERE id = ?`,
-      [type, method, title, description, country, project_id, reference, deadline, 'actif', null, tdrFilename, tdrFilepath, JSON.stringify(emails), JSON.stringify(removedDefaultDocs), id]
+      `UPDATE offers SET type = ?, method = ?, title = ?, description = ?, country = ?, project_id = ?, reference = ?, deadline = ?, status = ?, winner_name = ?, tdr_filename = ?, tdr_filepath = ?, notification_emails = ?, removed_default_documents = ?, title_en = ?, description_en = ?, tdr_filename_en = ?, tdr_filepath_en = ?, language = ? WHERE id = ?`,
+      [type, method, title, description, country, project_id, reference, deadline, 'actif', null, tdrFilename, tdrFilepath, JSON.stringify(emails), JSON.stringify(removedDefaultDocs), title_en || null, description_en || null, tdrFilenameEn, tdrFilepathEn, language || 'fr', id]
     );
 
     // Handle custom required documents - delete existing and recreate
