@@ -635,7 +635,7 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
   }
 
   // Step indicator for bilingual offers
-  const showStepIndicator = languageChoice === 'both' && !offer;
+  const showStepIndicator = languageChoice === 'both';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
@@ -662,23 +662,15 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
         </div>
       )}
 
-      {/* Language Selection Header (for editing) */}
-      {!offer && (
+      {/* Language Selection Header (for editing) - read-only display */}
+      {offer && (
         <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
           <div className="flex items-center space-x-2 text-sm text-gray-600">
-            <span>Language selected:</span>
+            <span>Offer language:</span>
             <span className="font-semibold">
-              {languageChoice === 'fr' ? '🇫🇷 Français' : languageChoice === 'en' ? '🇬🇧 English' : '🌐 Bilingual'}
+              {languageChoice === 'fr' ? '🇫🇷 Français uniquement' : languageChoice === 'en' ? '🇬🇧 English only' : '🌐 Bilingual / Bilingue'}
             </span>
-            {languageChoice !== 'both' && !offer && (
-              <button
-                type="button"
-                onClick={() => setLanguageChoice(null as any)}
-                className="ml-4 text-blue-600 hover:text-blue-800 underline"
-              >
-                Change
-              </button>
-            )}
+            <span className="text-xs text-gray-400 ml-2">(Cannot be changed)</span>
           </div>
         </div>
       )}
