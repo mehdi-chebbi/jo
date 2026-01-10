@@ -544,6 +544,14 @@ const applicantStorage = multer.diskStorage({
 });
 
 const uploadTdr = multer({ storage: tdrStorage });
+
+// Multer setup for bilingual TDR files (French and English)
+const uploadTdrBilingual = multer({
+  storage: tdrStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
+});
 const uploadApplicant = multer({ storage: applicantStorage });
 
 // Dynamic multer configuration that accepts any field
@@ -552,7 +560,7 @@ const uploadApplicantDynamic = multer({ storage: applicantStorage });
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'rootpassword',
+  password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'rh_app', // optional fallback
   port: Number(process.env.DB_PORT) || 3306,
   timezone: '+01:00', // Tunisia time (UTC+1) - ensures all timestamps are in Tunisia time
@@ -620,6 +628,8 @@ let pool;
     `);
     console.log('Projects table created');
 
+
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS offers (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -643,59 +653,16 @@ let pool;
         notification_emails TEXT,
         removed_default_documents TEXT,
         five_day_notified BOOLEAN DEFAULT FALSE,
+        language ENUM('fr', 'en', 'both') NOT NULL DEFAULT 'both',
+        title_en VARCHAR(255) NULL,
+        description_en TEXT NULL,
+        tdr_filename_en VARCHAR(255) NULL,
+        tdr_filepath_en VARCHAR(255) NULL,
         FOREIGN KEY (project_id) REFERENCES projects(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
       )
     `);
     console.log('Offers table created');
-
-    // Add removed_default_documents column if it doesn't exist (for existing databases)
-    try {
-      // Check if column exists first
-      const [columns] = await pool.query(`
-        SELECT COLUMN_NAME 
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_SCHEMA = 'rh_app' 
-        AND TABLE_NAME = 'offers' 
-        AND COLUMN_NAME = 'removed_default_documents'
-      `);
-      
-      if (columns.length === 0) {
-        await pool.query(`
-          ALTER TABLE offers
-          ADD COLUMN removed_default_documents TEXT
-        `);
-        console.log('removed_default_documents column added to offers table');
-      } else {
-        console.log('removed_default_documents column already exists');
-      }
-    } catch (error) {
-      console.log('Error checking/adding removed_default_documents column:', error.message);
-    }
-
-    // Add five_day_notified column if it doesn't exist (for 5-day expiration warning)
-    try {
-      // Check if column exists first
-      const [columns] = await pool.query(`
-        SELECT COLUMN_NAME 
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_SCHEMA = 'rh_app' 
-        AND TABLE_NAME = 'offers' 
-        AND COLUMN_NAME = 'five_day_notified'
-      `);
-      
-      if (columns.length === 0) {
-        await pool.query(`
-          ALTER TABLE offers
-          ADD COLUMN five_day_notified BOOLEAN DEFAULT FALSE
-        `);
-        console.log('five_day_notified column added to offers table');
-      } else {
-        console.log('five_day_notified column already exists');
-      }
-    } catch (error) {
-      console.log('Error checking/adding five_day_notified column:', error.message);
-    }
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS applications (
@@ -1158,9 +1125,12 @@ app.delete('/projects/:id', auth, requireRole('comite_ajout'), async (req, res) 
 });
 
 // ───── Offers ─────
-// Get all offers with tdr url if exists (including expired for frontend filtering)
+// Get all offers with language filtering and tdr url if exists (including expired for frontend filtering)
 app.get('/offers', async (req, res) => {
   try {
+    // Get language from query parameter (default to 'fr')
+    const lang = req.query.lang || 'fr';
+    
     // Get current server local time for real-time status checking
     const now = getLocalDate();
 
@@ -1172,14 +1142,27 @@ app.get('/offers', async (req, res) => {
       WHERE deadline < ? AND status = 'actif'
     `, [now]);
 
+    // Filter offers by language
+    // For 'fr': return offers with language='fr' OR language='both'
+    // For 'en': return offers with language='en' OR language='both'
+    const languageFilter = lang === 'fr' 
+      ? "(o.language = 'fr' OR o.language = 'both')"
+      : "(o.language = 'en' OR o.language = 'both')";
+
+    // Return appropriate content based on language
+    const isEnglish = lang === 'en';
+    
     const [offers] = await pool.query(`
-      SELECT o.id, o.type, o.method, o.title, o.description, o.country,
+      SELECT o.id, o.type, o.method, o.title, o.title_en, o.description, o.description_en, o.country,
+             o.language,
              p.name as project_name, d.name as department_name,
-             o.reference, o.deadline, o.created_at, o.tdr_filename, o.tdr_filepath,
+             o.reference, o.deadline, o.created_at, 
+             o.tdr_filename, o.tdr_filename_en, o.tdr_filepath, o.tdr_filepath_en,
              o.status, o.winner_name, o.removed_default_documents
       FROM offers o
       LEFT JOIN projects p ON o.project_id = p.id
       LEFT JOIN departments d ON p.department_id = d.id
+      WHERE ${languageFilter}
       ORDER BY o.created_at DESC
     `);
     const offersWithUrl = offers.map(offer => {
@@ -1284,6 +1267,9 @@ app.get('/offers/dashboard', auth, requireRole(['comite_ajout', 'comite_ouvertur
 // Get a single offer by ID
 app.get('/offers/:id', async (req, res) => {
   try {
+    // Get language from query parameter (default to 'fr')
+    const lang = req.query.lang || 'fr';
+    
     // Get current server local time for real-time status checking
     const now = getLocalDate();
 
@@ -1296,9 +1282,11 @@ app.get('/offers/:id', async (req, res) => {
     `, [now]);
 
     const [rows] = await pool.query(`
-      SELECT o.id, o.type, o.method, o.title, o.description, o.country,
+      SELECT o.id, o.type, o.method, o.title, o.title_en, o.description, o.description_en, o.country,
+             o.language,
              p.name as project_name, d.name as department_name,
-             o.reference, o.deadline, o.created_at, o.tdr_filename, o.tdr_filepath,
+             o.reference, o.deadline, o.created_at, 
+             o.tdr_filename, o.tdr_filename_en, o.tdr_filepath, o.tdr_filepath_en,
              o.notification_emails, o.project_id, o.status, o.winner_name, o.removed_default_documents
       FROM offers o
       LEFT JOIN projects p ON o.project_id = p.id
@@ -1338,7 +1326,18 @@ app.get('/offers/:id', async (req, res) => {
       ...offer,
       custom_required_documents: customDocs,
       removed_default_documents: removedDefaultDocs,
-      tdr_url: offer.tdr_filename ? `/offers/${offer.id}/tdr` : null
+      // Return appropriate content based on language
+      // If English, use English content if available, otherwise fallback to French
+      // If French, always use French content
+      title: lang === 'en' ? (offer.title_en || offer.title) : offer.title,
+      description: lang === 'en' ? (offer.description_en || offer.description) : offer.description,
+      // Select correct TDR file based on language
+      tdr_filename: lang === 'en' ? (offer.tdr_filename_en || offer.tdr_filename) : offer.tdr_filename,
+      tdr_filepath: lang === 'en' ? (offer.tdr_filepath_en || offer.tdr_filepath) : offer.tdr_filepath,
+      // Generate TDR URL based on selected file
+      tdr_url: (lang === 'en' ? (offer.tdr_filename_en || offer.tdr_filename) : offer.tdr_filename) 
+        ? `/offers/${offer.id}/tdr` 
+        : null
     };
 
     res.json(offerWithUrl);
@@ -1348,22 +1347,45 @@ app.get('/offers/:id', async (req, res) => {
   }
 });
 
-app.post('/offers', auth, requireRole('comite_ajout'), uploadTdr.single('tdr'), async (req, res) => {
+app.post('/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fields([{ name: 'tdr', maxCount: 1 }, { name: 'tdr_en', maxCount: 1 }]), async (req, res) => {
   try {
-    const { type, method, title, description, country, project_id, reference, deadline, notification_emails, custom_documents, removed_default_documents } = req.body;
-    const tdrFile = req.file;
+    const { type, method, title, description, country, project_id, reference, deadline, notification_emails, custom_documents, removed_default_documents, language, title_en, description_en } = req.body;
+    const tdrFrFile = req.files['tdr'] ? req.files['tdr'][0] : null;
+    const tdrEnFile = req.files['tdr_en'] ? req.files['tdr_en'][0] : null;
 
+    // Validate required common fields
     if (!type || !method || !title || !country || !project_id || !reference || !deadline) {
-      return res.status(400). json({ error: 'Missing fields' });
+      return res.status(400).json({ error: 'Missing fields' });
     }
 
-    if (tdrFile && tdrFile.mimetype !== 'application/pdf') {
-      return res.status(400).json({ error: 'TDR must be a PDF file' });
+    // Validate language
+    if (!language || !['fr', 'en', 'both'].includes(language)) {
+      return res.status(400).json({ error: 'Invalid language value. Must be fr, en, or both' });
     }
 
-    // Store deadline exactly as received from frontend (datetime-local format)
-    const tdrFilename = tdrFile ? tdrFile.filename : null;
-    const tdrFilepath = tdrFile ? tdrFile.path : null;
+    // Validate French TDR file
+    if (tdrFrFile && tdrFrFile.mimetype !== 'application/pdf') {
+      return res.status(400).json({ error: 'French TDR must be a PDF file' });
+    }
+
+    // If bilingual, validate English content and TDR
+    if (language === 'both') {
+      if (!title_en || !description_en) {
+        return res.status(400).json({ error: 'English title and description are required for bilingual offers' });
+      }
+      if (tdrEnFile && tdrEnFile.mimetype !== 'application/pdf') {
+        return res.status(400).json({ error: 'English TDR must be a PDF file' });
+      }
+      if (!tdrEnFile) {
+        return res.status(400).json({ error: 'English TDR file is required for bilingual offers' });
+      }
+    }
+
+    // Store TDR files
+    const tdrFilenameFr = tdrFrFile ? tdrFrFile.filename : null;
+    const tdrFilepathFr = tdrFrFile ? tdrFrFile.path : null;
+    const tdrFilenameEn = tdrEnFile ? tdrEnFile.filename : null;
+    const tdrFilepathEn = tdrEnFile ? tdrEnFile.path : null;
 
     // Parse notification emails
     let emails = [];
@@ -1394,9 +1416,13 @@ app.post('/offers', auth, requireRole('comite_ajout'), uploadTdr.single('tdr'), 
     }
 
     const [result] = await pool.query(
-      `INSERT INTO offers (type, method, title, description, country, project_id, reference, deadline, status, created_by, tdr_filename, tdr_filepath, notification_emails, removed_default_documents)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'actif', ?, ?, ?, ?, ?)`,
-      [type, method, title, description, country, project_id, reference, deadline, req.user.id, tdrFilename, tdrFilepath, JSON.stringify(emails), JSON.stringify(removedDefaultDocs)]
+      `INSERT INTO offers SET
+         type = ?, method = ?, title = ?, description = ?, country = ?, project_id = ?,
+         reference = ?, deadline = ?, status = ?, created_by = ?,
+         tdr_filename = ?, tdr_filepath = ?, notification_emails = ?, removed_default_documents = ?,
+         language = ?, title_en = ?, description_en = ?, tdr_filename_en = ?, tdr_filepath_en = ?
+      `,
+      [type, method, title, description, country, project_id, reference, deadline, 'actif', req.user.id, tdrFilenameFr, tdrFilepathFr, JSON.stringify(emails), JSON.stringify(removedDefaultDocs), language, title_en, description_en, tdrFilenameEn, tdrFilepathEn]
     );
 
     const offerId = result.insertId;
@@ -1703,18 +1729,41 @@ app.post('/offers/:id/set-infructueux', auth, requireRole('comite_ouverture'), a
 
 app.get('/offers/:id/tdr', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT tdr_filename, tdr_filepath FROM offers WHERE id = ?', [req.params.id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'TDR not found' });
-    const { tdr_filename, tdr_filepath } = rows[0];
-    if (!tdr_filename || !tdr_filepath) return res.status(404).json({ error: 'TDR not found' });
-
-    if (!fs.existsSync(tdr_filepath)) {
-      return res.status(404).json({ error: 'File not found' });
+    // Get language from query parameter (default to 'fr')
+    const lang = req.query.lang || 'fr';
+    
+    // Select both French and English TDR files
+    const [rows] = await pool.query('SELECT tdr_filename, tdr_filepath, tdr_filename_en, tdr_filepath_en FROM offers WHERE id = ?', [req.params.id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'TDR not found' });
     }
-
+    const { tdr_filename, tdr_filepath, tdr_filename_en, tdr_filepath_en } = rows[0];
+    
+    // Determine which TDR file to return based on language
+    let useFrenchTDR = true;
+    if (lang === 'en') {
+      // For English, prefer English TDR if available, otherwise fall back to French
+      if (tdr_filename_en && tdr_filepath_en) {
+        useFrenchTDR = false;
+      }
+    }
+    // For French, always use French TDR
+    
+    // Select correct TDR file and filename
+    const selectedTdrFilename = useFrenchTDR ? tdr_filename : (tdr_filename_en || tdr_filename);
+    const selectedTdrFilepath = useFrenchTDR ? tdr_filepath : (tdr_filepath_en || tdr_filepath);
+    
+    if (!selectedTdrFilename || !selectedTdrFilepath) {
+      return res.status(404).json({ error: `TDR file not found for language: ${lang}` });
+    }
+    
+    if (!fs.existsSync(selectedTdrFilepath)) {
+      return res.status(404).json({ error: 'TDR file not found on disk' });
+    }
+    
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${tdr_filename}"`);
-    res.sendFile(tdr_filepath);
+    res.setHeader('Content-Disposition', `inline; filename="${selectedTdrFilename}"`);
+    res.sendFile(selectedTdrFilepath);
   } catch {
     res.status(500).json({ error: 'Server error' });
   }
