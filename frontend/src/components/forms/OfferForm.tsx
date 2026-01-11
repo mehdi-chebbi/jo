@@ -56,50 +56,22 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
   const countryInputRef = useRef<HTMLInputElement>(null);
 
   // List of countries
- const countries = [
-  "Afghanistan", "Albanie", "Algérie", "Andorre", "Angola",
-  "Antigua-et-Barbuda", "Argentine", "Arménie", "Australie",
-  "Autriche", "Azerbaïdjan", "Bahamas", "Bahreïn", "Bangladesh",
-  "Barbade", "Biélorussie", "Belgique", "Belize", "Bénin", "Bhoutan",
-  "Bolivie", "Bosnie-Herzégovine", "Botswana", "Brésil",
-  "Brunéi", "Bulgarie", "Burkina Faso", "Burundi", "Cap-Vert",
-  "Cambodge", "Cameroun", "Canada", "République centrafricaine",
-  "Tchad", "Chili", "Chine", "Colombie", "Comores",
-  "République démocratique du Congo", "République du Congo",
-  "Costa Rica", "Côte d'Ivoire", "Croatie", "Cuba", "Chypre",
-  "République tchèque", "Danemark", "Djibouti", "Dominique",
-  "République dominicaine", "Équateur", "Égypte", "Salvador",
-  "Guinée équatoriale", "Érythrée", "Estonie", "Eswatini",
-  "Éthiopie", "Fidji", "Finlande", "France", "Gabon", "Gambie",
-  "Géorgie", "Allemagne", "Ghana", "Grèce", "Grenade", "Guatemala",
-  "Guinée", "Guinée-Bissau", "Guyana", "Haïti", "Honduras",
-  "Hongrie", "Islande", "Inde", "Indonésie", "Iran", "Irak",
-  "Irlande", "Israël", "Italie", "Jamaïque", "Japon", "Jordanie",
-  "Kazakhstan", "Kenya", "Kiribati", "Corée du Nord", "Corée du Sud",
-  "Kosovo", "Koweït", "Kirghizistan", "Laos", "Lettonie", "Liban",
-  "Lesotho", "Libéria", "Libye", "Liechtenstein", "Lituanie",
-  "Luxembourg", "Madagascar", "Malawi", "Malaisie", "Maldives",
-  "Mali", "Malte", "Îles Marshall", "Mauritanie", "Maurice",
-  "Mexique", "Micronésie", "Moldavie", "Monaco", "Mongolie",
-  "Monténégro", "Maroc", "Mozambique", "Myanmar", "Namibie",
-  "Nauru", "Népal", "Pays-Bas", "Nouvelle-Zélande", "Nicaragua",
-  "Niger", "Nigéria", "Macédoine du Nord", "Norvège", "Oman",
-  "Pakistan", "Palaos", "Palestine", "Panama", "Papouasie-Nouvelle-Guinée",
-  "Paraguay", "Pérou", "Philippines", "Pologne", "Portugal", "Qatar",
-  "Roumanie", "Russie", "Rwanda", "Saint-Christophe-et-Niévès",
-  "Sainte-Lucie", "Saint-Vincent-et-les-Grenadines", "Samoa",
-  "Saint-Marin", "Sao Tomé-et-Principe", "Arabie saoudite", "Sénégal",
-  "Serbie", "Seychelles", "Sierra Leone", "Singapour", "Slovaquie",
-  "Slovénie", "Îles Salomon", "Somalie", "Afrique du Sud",
-  "Soudan du Sud", "Espagne", "Sri Lanka", "Soudan", "Suriname",
-  "Suède", "Suisse", "Syrie", "Taïwan", "Tadjikistan",
-  "Tanzanie", "Thaïlande", "Timor oriental", "Togo", "Tonga",
-  "Trinité-et-Tobago", "Tunisie", "Turquie", "Turkménistan",
-  "Tuvalu", "Ouganda", "Ukraine", "Émirats arabes unis",
-  "Royaume-Uni", "États-Unis", "Uruguay", "Ouzbékistan",
-  "Vanuatu", "Vatican", "Venezuela", "Viêt Nam", "Yémen",
-  "Zambie", "Zimbabwe"
+const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana",
+    "Burkina Faso",
+  "Burundi",  "Cap-Vert",  "Cameroun",  "Republique centrafricaine",  "Tchad",
+  "Comores",  "Republique democratique du Congo",
+  "Republique du Congo",  "Cote d'Ivoire",  "Djibouti",
+  "Egypte",  "Guinee equatoriale",  "Erythree",
+  "Eswatini",  "Ethiopie",  "Gabon",  "Gambie",  "Ghana",  "Guinee",  "Guinee-Bissau",
+  "Kenya",  "Lesotho",  "Liberia",  "Lybie",
+  "Madagascar",  "Malawi",  "Mali",  "Mauritanie",  "Maurice",
+  "Maroc",  "Mozambique",  "Namibie",  "Niger",
+  "Nigeria",  "Rwanda",  "Sao Tome-et-Principe",
+  "Senegal",  "Seychelles",  "Sierra Leone",  "Somalie",  "Afrique du Sud",  "Soudan", 
+   "Soudan du Sud",  "Tanzanie",  "Togo",  "Tunisie",
+  "Ouganda",  "Zambie",  "Zimbabwe"
 ];
+
 
   // Initialize language choice from existing offer
   useEffect(() => {
@@ -477,7 +449,7 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
     if (!selectedDepartment) {
       await Swal.fire({
         icon: 'warning',
-        title: 'Validation Error',
+        title: 'Erreur',
         text: t('rh.form.validation.selectDepartment'),
         confirmButtonText: 'OK'
       });
@@ -489,7 +461,7 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
     if (!selectedProject) {
       await Swal.fire({
         icon: 'warning',
-        title: 'Validation Error',
+        title: 'Erreur',
         text: t('rh.form.validation.selectProject'),
         confirmButtonText: 'OK'
       });
@@ -510,7 +482,7 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
     if (invalidEmails.length > 0) {
       await Swal.fire({
         icon: 'warning',
-        title: 'Validation Error',
+        title: 'Erreur',
         text: t('rh.form.validation.validEmails'),
         confirmButtonText: 'OK'
       });
@@ -558,7 +530,7 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
         const errorData = await response.json();
         await Swal.fire({
           icon: 'error',
-          title: 'Save Failed',
+          title: 'Erreur',
           text: `${t('rh.form.error.saveOffer')}: ${errorData.error || 'Unknown error'} ❌`,
           confirmButtonText: 'OK'
         });
@@ -567,7 +539,7 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
       console.error('Save error:', err);
       await Swal.fire({
         icon: 'error',
-        title: 'Network Error',
+        title: 'Erreur',
         text: t('rh.form.error.network'),
         confirmButtonText: 'OK'
       });
@@ -579,7 +551,7 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
     return (
       <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
         <h2 className="text-2xl font-bold text-gray-800 mb-6">
-          {t('rh.form.selectLanguage')}
+          Selectionner le language de l'offre
         </h2>
         <div className="space-y-4">
           <button
@@ -589,11 +561,23 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
           >
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">🇫🇷</span>
-              </div>
+  <svg
+    viewBox="0 0 36 36"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+    role="img"
+    className="w-10 h-10"
+    preserveAspectRatio="xMidYMid meet"
+  >
+    <path fill="#ED2939" d="M36 27a4 4 0 0 1-4 4h-8V5h8a4 4 0 0 1 4 4v18z" />
+    <path fill="#002495" d="M4 5a4 4 0 0 0-4 4v18a4 4 0 0 0 4 4h8V5H4z" />
+    <path fill="#EEE" d="M12 5h12v26H12z" />
+  </svg>
+</div>
+
               <div>
                 <h3 className="font-semibold text-gray-800">Français uniquement</h3>
-                <p className="text-sm text-gray-500">L'offre ne sera affichée que sur la page /fr</p>
+                <p className="text-sm text-gray-500">L'offre ne sera affichée que sur la page francais</p>
               </div>
             </div>
           </button>
@@ -605,11 +589,23 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
           >
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">🇬🇧</span>
+<svg
+  viewBox="0 0 36 36"
+  xmlns="http://www.w3.org/2000/svg"
+  aria-hidden="true"
+  role="img"
+  className="w-10 h-10"
+  preserveAspectRatio="xMidYMid meet"
+>
+  <path fill="#00247D" d="M0 9.059V13h5.628zM4.664 31H13v-5.837zM23 25.164V31h8.335zM0 23v3.941L5.63 23zM31.337 5H23v5.837zM36 26.942V23h-5.631zM36 13V9.059L30.371 13zM13 5H4.664L13 10.837z" />
+  <path fill="#CF1B2B" d="M25.14 23l9.712 6.801a3.977 3.977 0 0 0 .99-1.749L28.627 23H25.14zM13 23h-2.141l-9.711 6.8c.521.53 1.189.909 1.938 1.085L13 23.943V23zm10-10h2.141l9.711-6.8a3.988 3.988 0 0 0-1.937-1.085L23 12.057V13zm-12.141 0L1.148 6.2a3.994 3.994 0 0 0-.991 1.749L7.372 13h3.487z" />
+  <path fill="#EEE" d="M36 21H21v10h2v-5.836L31.335 31H32a3.99 3.99 0 0 0 2.852-1.199L25.14 23h3.487l7.215 5.052c.093-.337.158-.686.158-1.052v-.058L30.369 23H36v-2zM0 21v2h5.63L0 26.941V27c0 1.091.439 2.078 1.148 2.8l9.711-6.8H13v.943l-9.914 6.941c.294.07.598.116.914.116h.664L13 25.163V31h2V21H0zM36 9a3.983 3.983 0 0 0-1.148-2.8L25.141 13H23v-.943l9.915-6.942A4.001 4.001 0 0 0 32 5h-.663L23 10.837V5h-2v10h15v-2h-5.629L36 9.059V9zM13 5v5.837L4.664 5H4a3.985 3.985 0 0 0-2.852 1.2l9.711 6.8H7.372L.157 7.949A3.968 3.968 0 0 0 0 9v.059L5.628 13H0v2h15V5h-2z" />
+  <path fill="#CF1B2B" d="M21 15V5h-6v10H0v6h15v10h6V21h15v-6z" />
+</svg>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-800">English only</h3>
-                <p className="text-sm text-gray-500">The offer will only be displayed on the /en page</p>
+                <h3 className="font-semibold text-gray-800">Anglais uniquement</h3>
+                <p className="text-sm text-gray-500">L'offre ne sera affichée que sur la page anglais</p>
               </div>
             </div>
           </button>
@@ -620,9 +616,73 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
             className="w-full p-6 border-2 border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all duration-200 text-left"
           >
             <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">🌐</span>
-              </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-lg p-1">
+  <svg
+    viewBox="0 0 238.125 158.75"
+    xmlns="http://www.w3.org/2000/svg"
+    className="w-full h-full"
+  >
+    <defs>
+      {/* Rounded corners for the whole flag */}
+      <clipPath id="rounded">
+        <rect x="0" y="0" width="238.125" height="158.75" rx="18" ry="18" />
+      </clipPath>
+
+      {/* FR triangle */}
+      <clipPath id="triangle">
+        <path d="M0,600 900,0 0,0Z" />
+      </clipPath>
+
+      {/* UK diagonal cross clip */}
+      <clipPath id="crossClip">
+        <path d="M30,15H60V30ZM30,15V30H0ZM30,15H0V0ZM30,15V0H60Z" />
+      </clipPath>
+    </defs>
+
+    <g clipPath="url(#rounded)">
+      {/* UK background */}
+      <rect width="238.125" height="158.75" fill="#00247D" />
+
+      {/* White diagonals */}
+      <path
+        d="M0,0 238.125,158.75M238.125,0 0,158.75"
+        stroke="#EEE"
+        strokeWidth="31.75"
+      />
+
+      {/* Red diagonals */}
+      <path
+        d="M0,0 60,30M60,0 0,30"
+        transform="matrix(3.96875,0,0,5.29167,0,0)"
+        clipPath="url(#crossClip)"
+        stroke="#CF1B2B"
+        strokeWidth="4.62"
+      />
+
+      {/* White cross */}
+      <path
+        d="M119.06,0V158.75M0,79.38H238.125"
+        stroke="#EEE"
+        strokeWidth="52.92"
+      />
+
+      {/* Red cross */}
+      <path
+        d="M119.06,0V158.75M0,79.38H238.125"
+        stroke="#CF1B2B"
+        strokeWidth="31.75"
+      />
+
+      {/* FR triangle */}
+      <g transform="scale(0.2647,0.2646)" clipPath="url(#triangle)">
+        <rect width="900" height="600" fill="#ED2939" />
+        <rect width="600" height="600" fill="#EEE" />
+        <rect width="300" height="600" fill="#002495" />
+      </g>
+    </g>
+  </svg>
+</div>
+
               <div>
                 <h3 className="font-semibold text-gray-800">Bilingual / Bilingue</h3>
                 <p className="text-sm text-gray-500">L'offre sera affichée sur les deux pages /fr et /en</p>
