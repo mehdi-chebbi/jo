@@ -7,7 +7,7 @@ import { getOfferTypeInfo } from '../utils/offerType';
 import { API_BASE_URL } from '../config';
 import { useI18n } from '../i18n';
 import { showAlert } from '../utils/sweetalertConfig';
-
+import { getCountryName, getOfferTypeName } from '../utils/translations';
 // Function to format time remaining
 const formatTimeRemaining = (milliseconds: number, t: (key: string) => string): string => {
   if (milliseconds <= 0) return t('offer.countdown.expired');
@@ -135,7 +135,8 @@ const OfferDetailPage = () => {
   const deadlineDate = new Date(offer.deadline);
   const isExpired = isDeadlinePassed; // Use real-time deadline check
   const offerTypeInfo = getOfferTypeInfo(offer.type) as { name: string; color: string };
-  
+    const typeName = getOfferTypeName(offer.type, lang);
+
   return (
     <div className="bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -155,7 +156,7 @@ const OfferDetailPage = () => {
           <div className="p-6 md:p-8">
             <div className="flex flex-wrap gap-3 mb-4">
               <span className={`px-3 py-1 text-sm font-semibold rounded-full ${offerTypeInfo.color}`}>
-                {offerTypeInfo.name}
+                {typeName}
               </span>
               <span className={`px-3 py-1 text-sm font-semibold rounded-full ${isExpired ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
                 {isExpired ? t('offer.expired') : `${t('offer.closes')} ${deadlineDate.toLocaleDateString()} at ${deadlineDate.toLocaleTimeString()}`}
@@ -179,7 +180,7 @@ const OfferDetailPage = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">{t('label.country')}</p>
-                    <p className="font-medium text-gray-900">{offer.country}</p>
+                    <p className="font-medium text-gray-900">{getCountryName(offer.country, lang)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">{t('label.department')}</p>

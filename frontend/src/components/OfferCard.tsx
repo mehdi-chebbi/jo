@@ -4,7 +4,7 @@ import { getOfferTypeInfo } from '../utils/offerType';
 import { API_BASE_URL } from '../config';
 import { useI18n } from '../i18n';
 import { showAlert } from '../utils/sweetalertConfig';
-
+import { getCountryName, getOfferTypeName, getOfferMethodName } from '../utils/translations';
 interface User {
   id: number;
   name: string;
@@ -22,15 +22,17 @@ const OfferCard = ({ offer }: { offer: Offer }) => {
   
   // Use the two-parameter version to get both type and method info
   const offerTypeInfo = getOfferTypeInfo(offer.type, offer.method) as { type: { name: string; color: string }; method: { name: string; color: string } };
-  const { t, currentLangPrefix } = useI18n();
-  
+  const { t, currentLangPrefix, lang } = useI18n();
+   // Get translated names for type and method
+  const typeName = getOfferTypeName(offer.type, lang);
+  const methodName = getOfferMethodName(offer.method, lang);
   return (
     <div className="bg-white rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow flex flex-col h-full">
       <div className="p-6 flex-grow">
         <div className="flex flex-col gap-2 mb-2">
           <div className="flex justify-between items-start">
             <span className={`px-2 py-1 text-xs font-semibold rounded ${offerTypeInfo.type.color}`}>
-              {offerTypeInfo.type.name}
+              {typeName}
             </span>
             <span className={`px-2 py-1 text-xs font-semibold rounded ${
               hasSelectedCandidate ? 'bg-purple-100 text-purple-800' : 
@@ -48,7 +50,7 @@ const OfferCard = ({ offer }: { offer: Offer }) => {
           </div>
           <div className="flex justify-start">
             <span className={`px-2 py-1 text-xs font-semibold rounded ${offerTypeInfo.method.color}`}>
-              {offerTypeInfo.method.name}
+              {methodName}
             </span>
           </div>
         </div>
@@ -61,7 +63,7 @@ const OfferCard = ({ offer }: { offer: Offer }) => {
           </div>
           <div>
             <p className="text-sm text-gray-500">{t('label.country')}</p>
-            <p className="font-medium">{offer.country}</p>
+            <p className="font-medium">{getCountryName(offer.country, lang)}</p>
           </div>
           <div>
             <p className="text-sm text-gray-500">{t('label.department')}</p>

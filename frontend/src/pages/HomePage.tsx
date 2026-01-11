@@ -3,7 +3,7 @@ import OfferCard from '../components/OfferCard';
 import type { Offer } from '../types';
 import { getOfferTypeOnlyInfo } from '../utils/offerType';
 import { useI18n } from '../i18n';
-
+import { getOfferTypeName } from '../utils/translations';
 const HomePage = ({ offers }: { offers: Offer[] }) => {
   const { t, lang } = useI18n();
   const [filters, setFilters] = useState({
@@ -137,10 +137,10 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
                 >
                   <option value="">{t('home.allcategory')}</option>
                   {uniqueCategories.map(category => {
-                    const typeInfo = getOfferTypeOnlyInfo(category);
+                    const typeName = getOfferTypeName(category, lang);
                     return (
                       <option key={category} value={category}>
-                        {typeInfo.name}
+                        {typeName}
                       </option>
                     );
                   })}
@@ -199,10 +199,7 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
               )}
               {filters.category && (
                 <span className="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                  Categorie: {(() => {
-                    const typeInfo = getOfferTypeOnlyInfo(filters.category);
-                    return typeInfo.name;
-                  })()}
+                                    Categorie: {getOfferTypeName(filters.category, lang)}
                   <button 
                     onClick={() => setFilters(prev => ({ ...prev, category: '' }))}
                     className="ml-2 text-purple-600 hover:text-purple-900"
