@@ -8,4 +8,6 @@ export interface OfferSummary {
   application_count: number;
   status: 'actif' | 'sous_evaluation' | 'resultat' | 'infructueux';
   winner_name?: string | null;
+    can_archive?: boolean;
+
 }

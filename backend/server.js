@@ -1744,6 +1744,71 @@ app.post('/offers/:id/set-infructueux', auth, requireRole('comite_ouverture'), a
   }
 });
 
+// Extend offer deadline
+app.post('/offers/:id/extend', auth, requireRole('comite_ajout'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { new_deadline } = req.body;
+
+    // Validate that new_deadline is provided
+    if (!new_deadline) {
+      return res.status(400).json({ error: 'New deadline is required' });
+    }
+
+    // Parse the new deadline
+    const newDeadlineDate = new Date(new_deadline);
+
+    // Validate that it's a valid date
+    if (isNaN(newDeadlineDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format' });
+    }
+
+    // Get current time in Tunisia timezone
+    const now = getLocalDate();
+
+    // Validate that new deadline is in the future
+    if (newDeadlineDate <= now) {
+      return res.status(400).json({ error: 'New deadline must be in the future' });
+    }
+
+    // Verify offer exists and is active (any comite_ajout can extend any offer)
+    const [offerCheck] = await pool.query(
+      'SELECT id, title, status, deadline FROM offers WHERE id = ?',
+      [id]
+    );
+
+    if (offerCheck.length === 0) {
+      return res.status(404).json({ error: 'Offer not found' });
+    }
+
+    const offer = offerCheck[0];
+
+    // Check if offer is active
+    if (offer.status !== 'actif') {
+      return res.status(400).json({ error: 'Only active offers can be extended' });
+    }
+
+    // Update the deadline
+    await pool.query(
+      'UPDATE offers SET deadline = ? WHERE id = ?',
+      [new_deadline, id]
+    );
+
+    logOfferAction(req.user, `extended deadline`, `"${offer.title}" - Extended from ${offer.deadline} to ${new_deadline}`);
+
+    res.json({
+      message: `Offer deadline has been extended`,
+      old_deadline: offer.deadline,
+      new_deadline: new_deadline,
+      offer_id: id
+    });
+
+  } catch (err) {
+    console.error('Error extending offer deadline:', err);
+    res.status(500).json({ error: 'Failed to extend deadline' });
+  }
+});
+
 app.get('/offers/:id/tdr', async (req, res) => {
   try {
     // Get language from query parameter (default to 'fr')

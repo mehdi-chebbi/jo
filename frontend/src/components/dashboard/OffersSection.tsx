@@ -57,7 +57,9 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
   
   const user = getUser();
   const isComiteOuverture = user?.role === 'comite_ouverture';
+  const isComiteAjout = user?.role === 'comite_ajout';
   const [settingCandidate, setSettingCandidate] = useState<number | null>(null);
+  const [extendingOffer, setExtendingOffer] = useState<number | null>(null);
 
   const filteredOffers = offers.filter(offer => {
     const matchesSearch = offer.offer_title.toLowerCase().includes(filters.search.toLowerCase());
@@ -191,6 +193,112 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
       });
     } finally {
       setSettingCandidate(null);
+    }
+  };
+
+  const handleExtendOffer = async (offerId: number, offerTitle: string) => {
+    // Get current deadline for min date validation
+    const { value: formValues } = await Swal.fire({
+      title: t('extension.modal.title'),
+      html: `
+        <div style="text-align: left;">
+          <label style="display: block; margin-bottom: 8px; font-weight: 500;">${t('extension.modal.dateLabel')}</label>
+          <input type="date" id="swal-date" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px;" />
+
+          <label style="display: block; margin-top: 16px; margin-bottom: 8px; font-weight: 500;">${t('extension.modal.timeLabel')}</label>
+          <input type="time" id="swal-time" style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px;" />
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: t('extension.modal.confirm'),
+      cancelButtonText: t('extension.modal.cancel'),
+      customClass: {
+        confirmButton: 'swal-confirm-btn',
+        cancelButton: 'swal-cancel-btn'
+      },
+      didOpen: () => {
+        // Set minimum date to today
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const dateInput = document.getElementById('swal-date') as HTMLInputElement;
+        if (dateInput) {
+          dateInput.min = `${yyyy}-${mm}-${dd}`;
+        }
+      },
+      preConfirm: () => {
+        const dateInput = document.getElementById('swal-date') as HTMLInputElement;
+        const timeInput = document.getElementById('swal-time') as HTMLInputElement;
+
+        if (!dateInput?.value || !timeInput?.value) {
+          Swal.showValidationMessage('Please select both date and time');
+          return false;
+        }
+
+        const selectedDate = new Date(`${dateInput.value}T${timeInput.value}`);
+        const now = new Date();
+
+        if (selectedDate <= now) {
+          Swal.showValidationMessage(t('extension.error.pastDate'));
+          return false;
+        }
+
+        // Format for MySQL: YYYY-MM-DD HH:MM:SS
+        const yyyy = selectedDate.getFullYear();
+        const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(selectedDate.getDate()).padStart(2, '0');
+        const hh = String(selectedDate.getHours()).padStart(2, '0');
+        const min = String(selectedDate.getMinutes()).padStart(2, '0');
+
+        return `${yyyy}-${mm}-${dd} ${hh}:${min}:00`;
+      }
+    });
+
+    if (!formValues) {
+      return;
+    }
+
+    setExtendingOffer(offerId);
+
+    try {
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(`${API_BASE_URL}/offers/${offerId}/extend`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ new_deadline: formValues })
+      });
+
+      if (response.ok) {
+        await Swal.fire({
+          icon: 'success',
+          title: t('extension.success'),
+          confirmButtonText: t('rh.swal.great')
+        });
+        // Refresh offers list to show updated deadline
+        window.location.reload();
+      } else {
+        const errorData = await response.json();
+        await Swal.fire({
+          icon: 'error',
+          title: t('extension.error.requestFailed'),
+          text: errorData.error || 'Unknown error',
+          confirmButtonText: t('rh.swal.ok')
+        });
+      }
+    } catch (error) {
+      console.error('Error extending offer:', error);
+      await Swal.fire({
+        icon: 'error',
+        title: t('extension.error.requestFailed'),
+        confirmButtonText: t('rh.swal.ok')
+      });
+    } finally {
+      setExtendingOffer(null);
     }
   };
 
@@ -383,7 +491,7 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                       </button>
-                      
+
                       {/* Archive button for expired offers */}
                       {!isActif && onArchiveOffer && offer.can_archive && (
                         <button
@@ -459,6 +567,26 @@ const OffersSection = ({ offers, onSaveOffer, onDeleteOffer, onArchiveOffer }: O
                        isSousEvaluation ? t('rh.status.sousEvaluation') :
                        t('rh.status.resultat')}
                     </div>
+
+                    {/* EXTENSION BUTTON MOVED HERE */}
+                    {isActif && isComiteAjout && (
+                      <button
+                        onClick={() => handleExtendOffer(offer.offer_id, offer.offer_title)}
+                        disabled={extendingOffer === offer.offer_id}
+                        className="w-full mt-3 flex items-center justify-center px-4 py-2 border border-green-600 text-green-700 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                      >
+                        {extendingOffer === offer.offer_id ? (
+                          <svg className="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-6l-3 3M12 8v4l-3 3m6-6l3 3M12 8c2.21 0 4-1.79 4-4s-1.79-4-4-4 4m0 4c0-2.21 1.79-4 4-4s-1.79 4-4 4-4m0 4c0-2.21 1.79-4 4-4s-1.79 4-4 4-4m0 4c0-2.21 1.79-4 4-4s-1.79 4-4 4-4" />
+                          </svg>
+                        )}
+                        {extendingOffer === offer.offer_id ? t('rh.button.extending') : t('rh.button.extend')}
+                      </button>
+                    )}
 
                     {/* Show selected candidate if status is resultat */}
                     {isResultat && offer.winner_name && (

@@ -508,6 +508,16 @@ const en: Translations = {
   'rh.button.delete': 'Delete',
   'rh.button.manageUsers': 'Manage Users',
   'rh.button.cancel': 'Cancel',
+  'rh.button.extend': 'Extend',
+  'extension.modal.title': 'Extend Deadline',
+  'extension.modal.dateLabel': 'New deadline date',
+  'extension.modal.timeLabel': 'Time',
+  'extension.modal.confirm': 'Confirm',
+  'extension.modal.cancel': 'Cancel',
+  'extension.error.pastDate': 'Date must be in the future',
+  'extension.error.requestFailed': 'Failed to extend deadline',
+  'extension.success': 'Deadline extended successfully',
+  'extension.extending': 'Extending...',
     'askQuestion.cancel': 'Cancel',
 
   // Dashboard subtitles
@@ -1030,6 +1040,16 @@ const fr: Translations = {
 'askQuestion.disabledNotice' : 'Les questions ne peuvent être soumises que lorsqu’il reste plus de 10 jours.',
   // Dashboard subtitles
   'rh.dashboard.applicationsSubtitle': 'Gérer et examiner les candidatures',
+  'rh.button.extend': 'Extension',
+  'extension.modal.title': 'Prolonger la date limite',
+  'extension.modal.dateLabel': 'Nouvelle date limite',
+  'extension.modal.timeLabel': 'Heure',
+  'extension.modal.confirm': 'Confirmer',
+  'extension.modal.cancel': 'Annuler',
+  'extension.error.pastDate': 'La date doit être dans le futur',
+  'extension.error.requestFailed': 'Échec de la prolongation',
+  'extension.success': 'Date limite prolongée avec succès',
+  'extension.extending': 'Prolongation en cours...',
 };
 
 const dictionaries: Record<Language, Translations> = { en, fr };
