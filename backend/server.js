@@ -877,6 +877,80 @@ app.delete('/users/:id', auth, requireRole('admin'), async (req, res) => {
   }
 });
 
+
+// ───── User Profile (Authenticated users) ─────
+// Get current user profile
+app.get('/api/profile', auth, async (req, res) => {
+  try {
+    const [users] = await pool.query(
+      'SELECT id, name, email, role, created_at FROM users WHERE id = ?',
+      [req.user.id]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(users[0]);
+  } catch (err) {
+    console.error('Get profile error:', err);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// Update password for current user
+app.put('/api/profile/password', auth, async (req, res) => {
+  try {
+    const { current_password, new_password, confirm_password } = req.body;
+
+    // Validate inputs
+    if (!current_password || !new_password || !confirm_password) {
+      return res.status(400).json({ error: 'All password fields are required' });
+    }
+
+    // Check if passwords match
+    if (new_password !== confirm_password) {
+      return res.status(400).json({ error: 'New passwords do not match' });
+    }
+
+    // Validate new password length
+    if (new_password.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+
+    // Get user from database
+    const [users] = await pool.query('SELECT password FROM users WHERE id = ?', [req.user.id]);
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Verify current password
+    const user = users[0];
+    const isValidPassword = await bcrypt.compare(current_password, user.password);
+
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(new_password, 10);
+
+    // Update password
+    await pool.query(
+      'UPDATE users SET password = ? WHERE id = ?',
+      [hashedPassword, req.user.id]
+    );
+
+    logAction(`${req.user.name} (${req.user.email}) updated their password`);
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    console.error('Update password error:', err);
+    res.status(500).json({ error: 'Failed to update password' });
+  }
+});
+
 app.get('/logs', auth, requireRole('admin'), async (req, res) => {
   const [logs] = await pool.query('SELECT * FROM logs ORDER BY created_at DESC');
   res.json(logs);

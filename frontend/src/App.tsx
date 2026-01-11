@@ -13,6 +13,7 @@ import AnswerQuestionsPage from './pages/AnswerQuestionsPage';
 import type { Offer, User } from './types';
 import { API_BASE_URL } from './config';
 import { useI18n } from './i18n';
+import ProfilePage from './pages/ProfilePage';
 
 const LangLink = ({ to, className, children }: { to: string; className?: string; children: React.ReactNode }) => {
   const { currentLangPrefix } = useI18n();
@@ -148,18 +149,39 @@ const App = () => {
               </LangLink>
               
               <div className="flex items-center space-x-4">
-                <LangLink
-                  to="/about"
-                  className="hidden sm:inline-flex items-center px-4 py-2 text-gray-700 hover:text-green-600 font-medium rounded-lg hover:bg-green-50 transition-colors duration-200"
-                >
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  {t('nav.about')}
-                </LangLink>
+                  {!user && (
+                  <LangLink
+                    to="/about"
+                    className="hidden sm:inline-flex items-center px-4 py-2 text-gray-700 hover:text-green-600 font-medium rounded-lg hover:bg-green-50 transition-colors duration-200"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {t('nav.about')}
+                  </LangLink>
+                )}
                 
                 {user ? (
                   <div className="flex items-center space-x-4">
+                          <button
+                      onClick={() => {
+                        const path = location.pathname;
+                        if (path.startsWith('/fr')) {
+                          navigate('/fr/profile');
+                        } else {
+                          navigate('/en/profile');
+                        }
+                      }}
+                      className="flex items-center space-x-2 px-4 py-2 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                      title={t('profile.title')}
+                    >
+                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <div className="hidden sm:block">
+                        <p className="text-sm font-medium text-gray-900">{t('profile.title')}</p>
+                      </div>
+                    </button>
                     <div className="flex items-center space-x-3 px-4 py-2 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                         <span className="text-white font-semibold text-sm">
@@ -293,6 +315,8 @@ const App = () => {
                 <Route path="/fr/create-offer" element={<OfferCreationPage />} />
                 <Route path="/en/edit-offer/:id" element={<OfferEditPage />} />
                 <Route path="/fr/edit-offer/:id" element={<OfferEditPage />} />
+                                <Route path="/en/profile" element={<ProfilePage />} />
+                <Route path="/fr/profile" element={<ProfilePage />} />
               </>
             )}
             {user?.role === 'comite_ouverture' && (
