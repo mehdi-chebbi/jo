@@ -184,7 +184,7 @@ const StatisticsDashboard = () => {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-3xl font-bold mb-2">Tableau de Bord Statistique</h2>
-            <p className="text-blue-100">Vue d'ensemble des performances de recrutement</p>
+            <p className="text-blue-100">Vue d'ensemble des performances des offres</p>
           </div>
           <div className="text-right">
             <p className="text-sm text-blue-100">Dernière mise à jour</p>

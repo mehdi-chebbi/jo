@@ -17,7 +17,7 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
   // Form data for French (primary)
   const [formData, setFormData] = useState({
     type: offer?.type || 'travaux',
-    method: offer?.method || 'entente_directe',
+    method: offer?.method || 'appel_d_offre',
     title: offer?.title || '',
     title_en: offer?.title_en || '',
     description: offer?.description || '',
@@ -262,12 +262,6 @@ const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana"
 
     // Additional documents based on method
     const additionalDocsByMethod = {
-      'entente_directe': [],
-      'consultation': [
-        { key: 'declaration_sur_honneur', name: 'Declaration sur l\'Honneur', required: true },
-        { key: 'fiche_de_referencement', name: 'Fiche de Referencement', required: true },
-        { key: 'extrait_registre', name: 'Extrait Registre National', required: true }
-      ],
       'appel_d_offre': [
         { key: 'declaration_sur_honneur', name: 'Declaration sur l\'Honneur', required: true },
         { key: 'fiche_de_referencement', name: 'Fiche de Referencement', required: true },
@@ -275,6 +269,11 @@ const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana"
         { key: 'note_methodologique', name: 'Note Methodologique', required: true },
         { key: 'liste_references', name: 'Liste des References', required: true },
         { key: 'offre_financiere', name: 'Offre Financiere', required: true }
+      ],
+      'appel_a_candidature': [
+        { key: 'declaration_sur_honneur', name: 'Declaration sur l\'Honneur', required: true },
+        { key: 'fiche_de_referencement', name: 'Fiche de Referencement', required: true },
+        { key: 'extrait_registre', name: 'Extrait Registre National', required: true }
       ]
     };
 
@@ -312,12 +311,6 @@ const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana"
 
     // Additional documents based on method
     const additionalDocsByMethod = {
-      'entente_directe': [],
-      'consultation': [
-        { key: 'declaration_sur_honneur', name: 'Declaration sur l\'Honneur', required: true },
-        { key: 'fiche_de_referencement', name: 'Fiche de Referencement', required: true },
-        { key: 'extrait_registre', name: 'Extrait Registre National', required: true }
-      ],
       'appel_d_offre': [
         { key: 'declaration_sur_honneur', name: 'Declaration sur l\'Honneur', required: true },
         { key: 'fiche_de_referencement', name: 'Fiche de Referencement', required: true },
@@ -325,6 +318,11 @@ const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana"
         { key: 'note_methodologique', name: 'Note Methodologique', required: true },
         { key: 'liste_references', name: 'Liste des References', required: true },
         { key: 'offre_financiere', name: 'Offre Financiere', required: true }
+      ],
+      'appel_a_candidature': [
+        { key: 'declaration_sur_honneur', name: 'Declaration sur l\'Honneur', required: true },
+        { key: 'fiche_de_referencement', name: 'Fiche de Referencement', required: true },
+        { key: 'extrait_registre', name: 'Extrait Registre National', required: true }
       ]
     };
 

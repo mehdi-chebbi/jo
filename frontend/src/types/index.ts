@@ -25,8 +25,8 @@ export type Project = {
   created_by_name?: string;
 };
 
-export type OfferType = 'travaux' | 'prestation_intellectuelle' | 'recrutement' | 'service';
-export type OfferMethod = 'entente_directe' | 'consultation' | 'appel_d_offre';
+export type OfferType = 'travaux' | 'prestation_intellectuelle' | 'offre_d_emploi';
+export type OfferMethod = 'appel_d_offre' | 'appel_a_candidature';
 export type OfferLanguage = 'fr' | 'en' | 'both';
 
 export type Offer = {

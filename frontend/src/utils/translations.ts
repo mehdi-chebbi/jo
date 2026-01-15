@@ -66,17 +66,15 @@ export const translations = {
   offerTypes: {
     "travaux": { fr: "Travaux", en: "Works" },
     "prestation_intellectuelle": { fr: "Prestation Intellectuelle", en: "Consultancy" },
-    "recrutement": { fr: "Recrutement", en: "Recruitment" },
-    "service": { fr: "Service", en: "Service" }
+    "offre_d_emploi": { fr: "Offre d'Emploi", en: "Job Offer" }
   },
 
   // ============================================
   // OFFER METHODS
   // ============================================
   offerMethods: {
-    "entente_directe": { fr: "Entente Directe", en: "Direct Agreement" },
-    "consultation": { fr: "Consultation", en: "Consultation" },
-    "appel_d_offre": { fr: "Appel d'Offre", en: "Tender" }
+    "appel_d_offre": { fr: "Appel d'Offre", en: "Tender" },
+    "appel_a_candidature": { fr: "Appel à Candidature", en: "Call for Applications" }
   }
 } as const;
 

@@ -325,12 +325,16 @@ const App = () => {
                 <Route path="/fr/comite-ouverture-dashboard" element={<ComiteOuvertureDashboard />} />
                 <Route path="/en/answer-questions/:id" element={<AnswerQuestionsPage />} />
                 <Route path="/fr/answer-questions/:id" element={<AnswerQuestionsPage />} />
+                <Route path="/en/profile" element={<ProfilePage />} />
+                <Route path="/fr/profile" element={<ProfilePage />} />
               </>
             )}
             {user?.role === 'admin' && (
               <>
                 <Route path="/en/admin-dashboard" element={<AdminDashboard />} />
                 <Route path="/fr/admin-dashboard" element={<AdminDashboard />} />
+                <Route path="/en/profile" element={<ProfilePage />} />
+                <Route path="/fr/profile" element={<ProfilePage />} />
               </>
             )}
             

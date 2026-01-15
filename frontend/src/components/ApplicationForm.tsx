@@ -450,7 +450,7 @@ const ApplicationForm = ({ offerId, offerType, onClose }: { offerId: number; off
     }
     
     const additionalRequiredFields: string[] = [];
-    if (['manifestation', 'appel_d_offre_service', 'appel_d_offre_equipement', 'consultation'].includes(offerType)) {
+    if (['appel_d_offre'].includes(offerType)) {
       additionalRequiredFields.push(
         'declaration_sur_honneur',
         'fiche_de_referencement',
@@ -458,6 +458,12 @@ const ApplicationForm = ({ offerId, offerType, onClose }: { offerId: number; off
         'note_methodologique',
         'liste_references',
         'offre_financiere'
+      );
+    } else if (['appel_a_candidature'].includes(offerType)) {
+      additionalRequiredFields.push(
+        'declaration_sur_honneur',
+        'fiche_de_referencement',
+        'extrait_registre'
       );
     }
     
@@ -553,7 +559,7 @@ const ApplicationForm = ({ offerId, offerType, onClose }: { offerId: number; off
     );
   }
   
-  const requireAdditionalFields = ['manifestation', 'appel_d_offre_service', 'appel_d_offre_equipement', 'consultation'].includes(offerType);
+  const requireAdditionalFields = ['appel_d_offre', 'appel_a_candidature'].includes(offerType);
   
   return (
     <form onSubmit={handleSubmit} className="space-y-4">

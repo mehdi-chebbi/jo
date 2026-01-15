@@ -633,8 +633,8 @@ let pool;
     await pool.query(`
       CREATE TABLE IF NOT EXISTS offers (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        type ENUM('travaux', 'prestation_intellectuelle', 'recrutement', 'service') NOT NULL,
-        method ENUM('entente_directe', 'consultation', 'appel_d_offre') NOT NULL,
+        type ENUM('travaux', 'prestation_intellectuelle', 'offre_d_emploi') NOT NULL,
+        method ENUM('appel_d_offre', 'appel_a_candidature') NOT NULL,
         title VARCHAR(255) NOT NULL,
         description TEXT,
         country VARCHAR(100) NOT NULL,
@@ -2010,7 +2010,7 @@ app.post('/apply', uploadApplicantDynamic.any(), async (req, res) => {
 
     // Check additional required files based on offer type (filtered by removed documents)
     const additionalRequiredFiles = [];
-    if (['manifestation', 'appel_d_offre_service', 'appel_d_offre_equipement', 'consultation'].includes(offer.type)) {
+    if (['appel_d_offre'].includes(offer.type)) {
       additionalRequiredFiles.push(
         'declaration_sur_honneur',
         'fiche_de_referencement',
@@ -2018,6 +2018,12 @@ app.post('/apply', uploadApplicantDynamic.any(), async (req, res) => {
         'note_methodologique',
         'liste_references',
         'offre_financiere'
+      );
+    } else if (['appel_a_candidature'].includes(offer.type)) {
+      additionalRequiredFiles.push(
+        'declaration_sur_honneur',
+        'fiche_de_referencement',
+        'extrait_registre'
       );
     }
 
