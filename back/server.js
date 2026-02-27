@@ -43,7 +43,8 @@ const allowedOrigins = [
   'http://192.168.2.136',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  'http://127.0.0.1:3000'
+  'http://127.0.0.1:3000',
+  'http://sapmr.oss-online.org:90',
 ];
 
 app.use(cors({
@@ -814,7 +815,7 @@ app.use((req, res, next) => {
 });
 
 // ───── Auth ─────
-app.post('/login', async (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
   try {
@@ -832,7 +833,7 @@ app.post('/login', async (req, res) => {
 });
 
 // ───── Users (Admin only) ─────
-app.post('/users', auth, requireRole('admin'), async (req, res) => {
+app.post('/api/users', auth, requireRole('admin'), async (req, res) => {
   const { name, email, password, role } = req.body;
   if (!name || !email || !password || !['admin', 'comite_ajout', 'comite_ouverture'].includes(role)) {
     return res.status(400).json({ error: 'Invalid user data' });
@@ -847,12 +848,12 @@ app.post('/users', auth, requireRole('admin'), async (req, res) => {
   }
 });
 
-app.get('/users', auth, requireRole('admin'), async (req, res) => {
+app.get('/api/users', auth, requireRole('admin'), async (req, res) => {
   const [users] = await pool.query('SELECT id, name, email, role, created_at FROM users');
   res.json(users);
 });
 
-app.put('/users/:id', auth, requireRole('admin'), async (req, res) => {
+app.put('/api/users/:id', auth, requireRole('admin'), async (req, res) => {
   const { name, email, role } = req.body;
   const { id } = req.params;
   if (!name || !email || !['admin', 'comite_ajout', 'comite_ouverture'].includes(role)) {
@@ -867,7 +868,7 @@ app.put('/users/:id', auth, requireRole('admin'), async (req, res) => {
   }
 });
 
-app.delete('/users/:id', auth, requireRole('admin'), async (req, res) => {
+app.delete('/api/users/:id', auth, requireRole('admin'), async (req, res) => {
   try {
     await pool.query('DELETE FROM users WHERE id = ?', [req.params.id]);
     logAction(`${req.user.name} (${req.user.email}) deleted user ${req.params.id}`);
@@ -951,13 +952,13 @@ app.put('/api/profile/password', auth, async (req, res) => {
   }
 });
 
-app.get('/logs', auth, requireRole('admin'), async (req, res) => {
+app.get('/api/logs', auth, requireRole('admin'), async (req, res) => {
   const [logs] = await pool.query('SELECT * FROM logs ORDER BY created_at DESC');
   res.json(logs);
 });
 
 // ───── Departments (comité d'ajout) ─────
-app.get('/departments', auth, requireRole('comite_ajout'), async (req, res) => {
+app.get('/api/departments', auth, requireRole('comite_ajout'), async (req, res) => {
   try {
     const [departments] = await pool.query(`
       SELECT d.*, u.name as created_by_name
@@ -973,7 +974,7 @@ app.get('/departments', auth, requireRole('comite_ajout'), async (req, res) => {
   }
 });
 
-app.post('/departments', auth, requireRole('comite_ajout'), async (req, res) => {
+app.post('/api/departments', auth, requireRole('comite_ajout'), async (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Department name is required' });
 
@@ -993,7 +994,7 @@ app.post('/departments', auth, requireRole('comite_ajout'), async (req, res) => 
   }
 });
 
-app.put('/departments/:id', auth, requireRole('comite_ajout'), async (req, res) => {
+app.put('/api/departments/:id', auth, requireRole('comite_ajout'), async (req, res) => {
   const { name } = req.body;
   const { id } = req.params;
 
@@ -1023,7 +1024,7 @@ app.put('/departments/:id', auth, requireRole('comite_ajout'), async (req, res) 
   }
 });
 
-app.delete('/departments/:id', auth, requireRole('comite_ajout'), async (req, res) => {
+app.delete('/api/departments/:id', auth, requireRole('comite_ajout'), async (req, res) => {
   try {
     // Verify department belongs to comite_ajout user and has no projects
     const [deptCheck] = await pool.query(`
@@ -1051,7 +1052,7 @@ app.delete('/departments/:id', auth, requireRole('comite_ajout'), async (req, re
 });
 
 // ───── Projects (comité d'ajout) ─────
-app.get('/projects', auth, requireRole('comite_ajout'), async (req, res) => {
+app.get('/api/projects', auth, requireRole('comite_ajout'), async (req, res) => {
   try {
     const [projects] = await pool.query(`
       SELECT p.*, d.name as department_name, u.name as created_by_name
@@ -1068,7 +1069,7 @@ app.get('/projects', auth, requireRole('comite_ajout'), async (req, res) => {
   }
 });
 
-app.get('/projects/department/:departmentId', auth, requireRole('comite_ajout'), async (req, res) => {
+app.get('/api/projects/department/:departmentId', auth, requireRole('comite_ajout'), async (req, res) => {
   try {
     const { departmentId } = req.params;
 
@@ -1097,7 +1098,7 @@ app.get('/projects/department/:departmentId', auth, requireRole('comite_ajout'),
   }
 });
 
-app.post('/projects', auth, requireRole('comite_ajout'), async (req, res) => {
+app.post('/api/projects', auth, requireRole('comite_ajout'), async (req, res) => {
   const { name, department_id } = req.body;
   if (!name || !department_id) return res.status(400).json({ error: 'Project name and department are required' });
 
@@ -1128,7 +1129,7 @@ app.post('/projects', auth, requireRole('comite_ajout'), async (req, res) => {
   }
 });
 
-app.put('/projects/:id', auth, requireRole('comite_ajout'), async (req, res) => {
+app.put('/api/projects/:id', auth, requireRole('comite_ajout'), async (req, res) => {
   const { name, department_id } = req.body;
   const { id } = req.params;
 
@@ -1171,7 +1172,7 @@ app.put('/projects/:id', auth, requireRole('comite_ajout'), async (req, res) => 
   }
 });
 
-app.delete('/projects/:id', auth, requireRole('comite_ajout'), async (req, res) => {
+app.delete('/api/projects/:id', auth, requireRole('comite_ajout'), async (req, res) => {
   try {
     // Verify project belongs to comite_ajout user and has no offers
     const [projectCheck] = await pool.query(`
@@ -1200,7 +1201,7 @@ app.delete('/projects/:id', auth, requireRole('comite_ajout'), async (req, res) 
 
 // ───── Offers ─────
 // Get all offers with language filtering and tdr url if exists (including expired for frontend filtering)
-app.get('/offers', async (req, res) => {
+app.get('/api/offers', async (req, res) => {
   try {
     // Get language from query parameter (default to 'fr')
     const lang = req.query.lang || 'fr';
@@ -1268,7 +1269,7 @@ app.get('/offers', async (req, res) => {
 });
 
 // Get all offers for dashboard (including expired)
-app.get('/offers/dashboard', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
+app.get('/api/offers/dashboard', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
   try {
     // Use server local time for consistent comparison
     const now = getLocalDate();
@@ -1339,7 +1340,7 @@ app.get('/offers/dashboard', auth, requireRole(['comite_ajout', 'comite_ouvertur
 });
 
 // Get a single offer by ID
-app.get('/offers/:id', async (req, res) => {
+app.get('/api/offers/:id', async (req, res) => {
   try {
     // Get language from query parameter (default to 'fr')
     const lang = req.query.lang || 'fr';
@@ -1421,7 +1422,7 @@ app.get('/offers/:id', async (req, res) => {
   }
 });
 
-app.post('/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fields([{ name: 'tdr', maxCount: 1 }, { name: 'tdr_en', maxCount: 1 }]), async (req, res) => {
+app.post('/api/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fields([{ name: 'tdr', maxCount: 1 }, { name: 'tdr_en', maxCount: 1 }]), async (req, res) => {
   try {
     const { type, method, title, description, country, project_id, reference, deadline, notification_emails, custom_documents, removed_default_documents, language, title_en, description_en } = req.body;
     const tdrFrFile = req.files['tdr'] ? req.files['tdr'][0] : null;
@@ -1548,7 +1549,7 @@ app.post('/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fields
   }
 });
 
-app.put('/offers/:id', auth, requireRole('comite_ajout'), uploadTdrBilingual.fields([{ name: 'tdr', maxCount: 1 }, { name: 'tdr_en', maxCount: 1 }]), async (req, res) => {
+app.put('/api/offers/:id', auth, requireRole('comite_ajout'), uploadTdrBilingual.fields([{ name: 'tdr', maxCount: 1 }, { name: 'tdr_en', maxCount: 1 }]), async (req, res) => {
   try {
     const { type, method, title, title_en, description, description_en, country, project_id, reference, deadline, notification_emails, custom_documents, removed_default_documents, language } = req.body;
     const tdrFile = req.files?.tdr?.[0];
@@ -1686,7 +1687,7 @@ app.put('/offers/:id', auth, requireRole('comite_ajout'), uploadTdrBilingual.fie
   }
 });
 
-app.delete('/offers/:id', auth, requireRole('comite_ajout'), async (req, res) => {
+app.delete('/api/offers/:id', auth, requireRole('comite_ajout'), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1719,7 +1720,7 @@ app.delete('/offers/:id', auth, requireRole('comite_ajout'), async (req, res) =>
 });
 
 // Set winner for an offer (change status to 'resultat')
-app.post('/offers/:id/set-winner', auth, requireRole('comite_ouverture'), async (req, res) => {
+app.post('/api/offers/:id/set-winner', auth, requireRole('comite_ouverture'), async (req, res) => {
   try {
     const { winner_name } = req.body;
     const { id } = req.params;
@@ -1769,7 +1770,7 @@ app.post('/offers/:id/set-winner', auth, requireRole('comite_ouverture'), async 
 });
 
 // Set offer as infructueux (no applications received)
-app.post('/offers/:id/set-infructueux', auth, requireRole('comite_ouverture'), async (req, res) => {
+app.post('/api/offers/:id/set-infructueux', auth, requireRole('comite_ouverture'), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1819,7 +1820,7 @@ app.post('/offers/:id/set-infructueux', auth, requireRole('comite_ouverture'), a
 });
 
 // Extend offer deadline
-app.post('/offers/:id/extend', auth, requireRole('comite_ajout'), async (req, res) => {
+app.post('/api/offers/:id/extend', auth, requireRole('comite_ajout'), async (req, res) => {
   try {
     const { id } = req.params;
     const { new_deadline } = req.body;
@@ -1883,7 +1884,7 @@ app.post('/offers/:id/extend', auth, requireRole('comite_ajout'), async (req, re
   }
 });
 
-app.get('/offers/:id/tdr', async (req, res) => {
+app.get('/api/offers/:id/tdr', async (req, res) => {
   try {
     // Get language from query parameter (default to 'fr')
     const lang = req.query.lang || 'fr';
@@ -1927,7 +1928,7 @@ app.get('/offers/:id/tdr', async (req, res) => {
 
 // ───── Applications ─────
 // ───── Applications ─────
-app.post('/apply', uploadApplicantDynamic.any(), async (req, res) => {
+app.post('/api/apply', uploadApplicantDynamic.any(), async (req, res) => {
   try {
     console.log('Received application submission:', {
       body: req.body,
@@ -2203,7 +2204,7 @@ app.post('/apply', uploadApplicantDynamic.any(), async (req, res) => {
 
 // ───── View Applications ─────
 // Get all applications with offer details and document download URLs
-app.get('/applications', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
+app.get('/api/applications', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
   try {
     // For comite_ouverture, show all applications. For comite_ajout, show all comite_ajout users' applications.
     const whereClause = req.user.role === 'comite_ouverture' ? '' : 'WHERE u.role = "comite_ajout"';
@@ -2262,7 +2263,7 @@ app.get('/applications', auth, requireRole(['comite_ajout', 'comite_ouverture'])
 });
 
 // Get application counts by offer (for summary view)
-app.get('/applications/summary', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
+app.get('/api/applications/summary', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
   try {
     // Use server local time for consistent comparison
     const now = getLocalDate();
@@ -2308,7 +2309,7 @@ app.get('/applications/summary', auth, requireRole(['comite_ajout', 'comite_ouve
 });
 
 // Archive applications for an expired offer
-app.post('/applications/archive/:offerId', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
+app.post('/api/applications/archive/:offerId', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
   try {
     const { offerId } = req.params;
 
@@ -2485,7 +2486,7 @@ Candidate Information:
 });
 
 // Download archived applications file
-app.get('/applications/archive/:filename', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
+app.get('/api/applications/archive/:filename', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
   try {
     const { filename } = req.params;
     const filePath = `./archives/${filename}`;
@@ -2505,7 +2506,7 @@ app.get('/applications/archive/:filename', auth, requireRole(['comite_ajout', 'c
 });
 
 // Download documents for a specific application
-app.get('/applications/:id/:documentType', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
+app.get('/api/applications/:id/:documentType', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
   try {
     const { id, documentType } = req.params;
 
@@ -2811,7 +2812,7 @@ async function checkExpiredOffers() {
 }
 
 // Test email endpoint for Microsoft Graph API
-app.post('/test-email', auth, requireRole('admin'), async (req, res) => {
+app.post('/api/test-email', auth, requireRole('admin'), async (req, res) => {
   try {
     const { to, subject, message } = req.body;
 
@@ -2857,7 +2858,7 @@ app.post('/test-email', auth, requireRole('admin'), async (req, res) => {
 // ───── Q&A API Endpoints ─────
 
 // Submit a question for an offer
-app.post('/offers/:id/questions', async (req, res) => {
+app.post('/api/offers/:id/questions', async (req, res) => {
   try {
     const { id } = req.params;
     const { question, questioner_email } = req.body;
@@ -2952,7 +2953,7 @@ app.post('/offers/:id/questions', async (req, res) => {
 });
 
 // Get all questions for an offer (for committee)
-app.get('/offers/:id/questions', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
+app.get('/api/offers/:id/questions', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -2990,7 +2991,7 @@ app.get('/offers/:id/questions', auth, requireRole(['comite_ajout', 'comite_ouve
 });
 
 // Answer a question
-app.put('/questions/:id/answer', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
+app.put('/api/questions/:id/answer', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
   try {
     const { id } = req.params;
     const { answer } = req.body;
@@ -3065,7 +3066,7 @@ app.put('/questions/:id/answer', auth, requireRole(['comite_ajout', 'comite_ouve
 });
 
 // Delete answer for a question
-app.delete('/questions/:id/answer', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
+app.delete('/api/questions/:id/answer', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -3107,7 +3108,7 @@ app.delete('/questions/:id/answer', auth, requireRole(['comite_ajout', 'comite_o
 });
 
 // Update expired status for a specific offer (called by frontend when timer hits zero)
-app.post('/offers/:id/update-expired-status', async (req, res) => {
+app.post('/api/offers/:id/update-expired-status', async (req, res) => {
   try {
     const { id } = req.params;
     const now = getLocalDate();
@@ -3203,7 +3204,7 @@ app.post('/offers/:id/update-expired-status', async (req, res) => {
 });
 
 // Get FAQ (answered questions) for an offer
-app.get('/offers/:id/faq', async (req, res) => {
+app.get('/api/offers/:id/faq', async (req, res) => {
   try {
     const { id } = req.params;
 
