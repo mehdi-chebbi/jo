@@ -78,9 +78,9 @@ const StatisticsDashboard = () => {
   const fetchStatistics = async () => {
     try {
       const token = localStorage.getItem('token');
-      console.log('Fetching statistics from:', `${API_BASE_URL}/api/statistics`);
+      console.log('Fetching statistics from:', `${API_BASE_URL}/statistics`);
       
-      const response = await fetch(`${API_BASE_URL}/api/statistics`, {
+      const response = await fetch(`${API_BASE_URL}/statistics`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
