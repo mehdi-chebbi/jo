@@ -39,7 +39,7 @@ const ProfilePage = () => {
     const fetchProfile = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${API_BASE_URL}/api/profile`, {
+        const res = await fetch(`${API_BASE_URL}/profile`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -112,7 +112,7 @@ const ProfilePage = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/api/profile/password`, {
+      const res = await fetch(`${API_BASE_URL}/profile/password`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
