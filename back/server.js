@@ -38,6 +38,32 @@ function getLocalDate() {
   return new Date(utc + 3600000); // Add 1 hour (3600000ms) for UTC+1
 }
 
+// Helper function to convert ISO datetime to MySQL DATETIME format
+// Handles both ISO format (2026-05-06T23:00:00.000Z) and already formatted (2026-05-06 23:00:00)
+function convertToMySQLDateTime(isoDateTime) {
+  if (!isoDateTime) return null;
+  
+  // If already in MySQL format (no T separator), return as-is
+  if (typeof isoDateTime === 'string' && !isoDateTime.includes('T')) {
+    return isoDateTime;
+  }
+  
+  // Convert ISO format to MySQL format
+  const date = new Date(isoDateTime);
+  if (isNaN(date.getTime())) {
+    return isoDateTime; // Return original if invalid date
+  }
+  
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 const allowedOrigins = [
   'http://10.1.10.182',
   'http://192.168.2.116:91',
@@ -1498,7 +1524,7 @@ app.post('/api/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fi
          tdr_filename = ?, tdr_filepath = ?, notification_emails = ?, removed_default_documents = ?,
          language = ?, title_en = ?, description_en = ?, tdr_filename_en = ?, tdr_filepath_en = ?
       `,
-      [type, method, title, description, country, project_id, reference, deadline, 'actif', req.user.id, tdrFilenameFr, tdrFilepathFr, JSON.stringify(emails), JSON.stringify(removedDefaultDocs), language, title_en, description_en, tdrFilenameEn, tdrFilepathEn]
+      [type, method, title, description, country, project_id, reference, convertToMySQLDateTime(deadline), 'actif', req.user.id, tdrFilenameFr, tdrFilepathFr, JSON.stringify(emails), JSON.stringify(removedDefaultDocs), language, title_en, description_en, tdrFilenameEn, tdrFilepathEn]
     );
 
     const offerId = result.insertId;
@@ -1637,7 +1663,7 @@ app.put('/api/offers/:id', auth, requireRole('comite_ajout'), uploadTdrBilingual
 
     await pool.query(
       `UPDATE offers SET type = ?, method = ?, title = ?, description = ?, country = ?, project_id = ?, reference = ?, deadline = ?, status = ?, winner_name = ?, tdr_filename = ?, tdr_filepath = ?, notification_emails = ?, removed_default_documents = ?, title_en = ?, description_en = ?, tdr_filename_en = ?, tdr_filepath_en = ?, language = ? WHERE id = ?`,
-      [type, method, title, description, country, project_id, reference, deadline, 'actif', null, tdrFilename, tdrFilepath, JSON.stringify(emails), JSON.stringify(removedDefaultDocs), title_en || null, description_en || null, tdrFilenameEn, tdrFilepathEn, language || 'fr', id]
+      [type, method, title, description, country, project_id, reference, convertToMySQLDateTime(deadline), 'actif', null, tdrFilename, tdrFilepath, JSON.stringify(emails), JSON.stringify(removedDefaultDocs), title_en || null, description_en || null, tdrFilenameEn, tdrFilepathEn, language || 'fr', id]
     );
 
     // Handle custom required documents - delete existing and recreate
@@ -1867,7 +1893,7 @@ app.post('/api/offers/:id/extend', auth, requireRole('comite_ajout'), async (req
     // Update the deadline
     await pool.query(
       'UPDATE offers SET deadline = ? WHERE id = ?',
-      [new_deadline, id]
+      [convertToMySQLDateTime(new_deadline), id]
     );
 
     logOfferAction(req.user, `extended deadline`, `"${offer.title}" - Extended from ${offer.deadline} to ${new_deadline}`);
