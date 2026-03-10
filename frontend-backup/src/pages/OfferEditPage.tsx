@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import type { Offer } from '../types';
 import { API_BASE_URL } from '../config';
 import { useI18n } from '../i18n';
@@ -21,7 +20,6 @@ const useLanguageNavigate = () => {
 const OfferEditPage = () => {
   const langNavigate = useLanguageNavigate();
   const { id } = useParams<{ id: string }>();
-  const { t } = useI18n();
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -36,7 +34,6 @@ const OfferEditPage = () => {
           return;
         }
 
-        // Load offer data
         if (id) {
           const offerResponse = await fetch(`${API_BASE_URL}/offers/${id}`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -44,7 +41,6 @@ const OfferEditPage = () => {
 
           if (offerResponse.ok) {
             const offerData = await offerResponse.json();
-            console.log('Loaded offer data for editing:', offerData);
             setOffer(offerData);
           } else {
             setError('Offer not found');
@@ -62,46 +58,10 @@ const OfferEditPage = () => {
     loadOfferData();
   }, [id]);
 
-  const handleSaveOffer = async (updatedOffer: Offer) => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        langNavigate('/login');
-        return;
-      }
-
-      // Create FormData for file upload
-      const submitData = new FormData();
-
-      // Add basic offer fields (deadline will be sent as-is from offer data)
-      submitData.append('type', updatedOffer.type);
-      submitData.append('method', updatedOffer.method);
-      submitData.append('title', updatedOffer.title);
-      submitData.append('description', updatedOffer.description);
-      submitData.append('country', updatedOffer.country);
-      submitData.append('project_id', updatedOffer.project_id?.toString() || '');
-      submitData.append('reference', updatedOffer.reference);
-      submitData.append('deadline', updatedOffer.deadline);
-
-      const response = await fetch(`${API_BASE_URL}/offers/${id}`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: submitData,
-      });
-
-      if (response.ok) {
-        toast.success('Offer updated successfully!');
-        langNavigate('/comite-ajout-dashboard');
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to update offer');
-      }
-    } catch (err) {
-      console.error('Error updating offer:', err);
-      setError('Failed to update offer');
-    }
+  // OfferForm handles the PUT itself — onSave is called after successful save
+  // so we just navigate back to dashboard here
+  const handleSaveOffer = (_updatedOffer: Offer) => {
+    langNavigate('/comite-ajout-dashboard');
   };
 
   const handleCancel = () => {
@@ -140,10 +100,10 @@ const OfferEditPage = () => {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {offer && (
-          <OfferForm 
-            offer={offer} 
-            onSave={handleSaveOffer} 
-            onCancel={handleCancel} 
+          <OfferForm
+            offer={offer}
+            onSave={handleSaveOffer}
+            onCancel={handleCancel}
           />
         )}
       </div>

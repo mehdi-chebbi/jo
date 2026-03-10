@@ -42,32 +42,16 @@ function getLocalDate() {
 // Handles both ISO format (2026-05-06T23:00:00.000Z) and already formatted (2026-05-06 23:00:00)
 function convertToMySQLDateTime(isoDateTime) {
   if (!isoDateTime) return null;
-  
-  // If already in MySQL format (no T separator), return as-is
   if (typeof isoDateTime === 'string' && !isoDateTime.includes('T')) {
     return isoDateTime;
   }
-  
-  // Convert ISO format to MySQL format
-  const date = new Date(isoDateTime);
-  if (isNaN(date.getTime())) {
-    return isoDateTime; // Return original if invalid date
-  }
-  
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
-  
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  return isoDateTime.replace('T', ' ').substring(0, 19);
 }
 
 const allowedOrigins = [
   'http://10.1.10.182',
   'http://192.168.2.116:91',
-  'http://localhost:5173',
+  'http://localhost:91',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:3000',
   'https://sapmr.oss-online.org:91',
@@ -584,16 +568,14 @@ const uploadApplicant = multer({ storage: applicantStorage });
 
 // Dynamic multer configuration that accepts any field
 const uploadApplicantDynamic = multer({ storage: applicantStorage });
-
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'rh_app', // optional fallback
+  database: process.env.DB_NAME || 'rh_app',
   port: Number(process.env.DB_PORT) || 3306,
-  timezone: '+01:00', // Tunisia time (UTC+1) - ensures all timestamps are in Tunisia time
+  timezone: '+00:00',
 };
-
 const JWT_SECRET = 'your_jwt_secret'; // Use env var in production
 let pool;
 
@@ -1579,6 +1561,9 @@ app.post('/api/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fi
 app.put('/api/offers/:id', auth, requireRole('comite_ajout'), uploadTdrBilingual.fields([{ name: 'tdr', maxCount: 1 }, { name: 'tdr_en', maxCount: 1 }]), async (req, res) => {
   try {
     const { type, method, title, title_en, description, description_en, country, project_id, reference, deadline, notification_emails, custom_documents, removed_default_documents, language } = req.body;
+    if (!language) {
+  return res.status(400).json({ error: 'Language is required' });
+}
     const tdrFile = req.files?.tdr?.[0];
     const tdrEnFile = req.files?.tdr_en?.[0];
     const { id } = req.params;
@@ -1661,10 +1646,10 @@ app.put('/api/offers/:id', auth, requireRole('comite_ajout'), uploadTdrBilingual
       }
     }
 
-    await pool.query(
-      `UPDATE offers SET type = ?, method = ?, title = ?, description = ?, country = ?, project_id = ?, reference = ?, deadline = ?, status = ?, winner_name = ?, tdr_filename = ?, tdr_filepath = ?, notification_emails = ?, removed_default_documents = ?, title_en = ?, description_en = ?, tdr_filename_en = ?, tdr_filepath_en = ?, language = ? WHERE id = ?`,
-      [type, method, title, description, country, project_id, reference, convertToMySQLDateTime(deadline), 'actif', null, tdrFilename, tdrFilepath, JSON.stringify(emails), JSON.stringify(removedDefaultDocs), title_en || null, description_en || null, tdrFilenameEn, tdrFilepathEn, language || 'fr', id]
-    );
+ await pool.query(
+  `UPDATE offers SET type = ?, method = ?, title = ?, description = ?, country = ?, project_id = ?, reference = ?, deadline = ?, tdr_filename = ?, tdr_filepath = ?, notification_emails = ?, removed_default_documents = ?, title_en = ?, description_en = ?, tdr_filename_en = ?, tdr_filepath_en = ?, language = ? WHERE id = ?`,
+  [type, method, title, description, country, project_id, reference, convertToMySQLDateTime(deadline), tdrFilename, tdrFilepath, JSON.stringify(emails), JSON.stringify(removedDefaultDocs), title_en || null, description_en || null, tdrFilenameEn, tdrFilepathEn, language, id]
+);
 
     // Handle custom required documents - delete existing and recreate
     await pool.query('DELETE FROM custom_required_documents WHERE offer_id = ?', [id]);
@@ -1709,8 +1694,9 @@ app.put('/api/offers/:id', auth, requireRole('comite_ajout'), uploadTdrBilingual
 
     logOfferAction(req.user, 'updated', title);
     res.json(offerData);
-  } catch {
-    res.status(500).json({ error: 'Server error' });
+ } catch (err) {
+    console.error('PUT offer error:', err);
+    res.status(500).json({ error: 'Server error', details: err.message });
   }
 });
 

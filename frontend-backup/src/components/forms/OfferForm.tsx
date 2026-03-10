@@ -24,22 +24,32 @@ const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer:
     description_en: offer?.description_en || '',
     country: offer?.country || '',
     reference: offer?.reference || '',
-    deadline: offer?.deadline || '',
+deadline: offer?.deadline ? offer.deadline.replace(' ', 'T').substring(0, 16) : '',
     tdr: null as File | null,
     tdr_en: null as File | null,
     language: offer?.language || 'fr',
   });
 
-  // Notification emails state
-  const [notificationEmails, setNotificationEmails] = useState<string[]>(['']);
-
-  // Custom required documents state
-  const [customDocuments, setCustomDocuments] = useState<Array<{ name: string; key: string; required: boolean }>>([]);
-  const [newDocumentName, setNewDocumentName] = useState('');
+const [newDocumentName, setNewDocumentName] = useState('');
 
   // Removed default documents state
-  const [removedDefaultDocuments, setRemovedDefaultDocuments] = useState<Set<string>>(new Set());
+const [notificationEmails, setNotificationEmails] = useState<string[]>(() => {
+  if (!offer?.notification_emails) return [''];
+  try {
+    const emails = JSON.parse(offer.notification_emails);
+    return Array.isArray(emails) && emails.length > 0 ? emails : [''];
+  } catch { return ['']; }
+});
 
+const [customDocuments, setCustomDocuments] = useState<Array<{ name: string; key: string; required: boolean }>>(() => {
+  if (!offer?.custom_required_documents) return [];
+  return Array.isArray(offer.custom_required_documents) ? offer.custom_required_documents : [];
+});
+
+const [removedDefaultDocuments, setRemovedDefaultDocuments] = useState<Set<string>>(() => {
+  if (!offer?.removed_default_documents) return new Set();
+  return Array.isArray(offer.removed_default_documents) ? new Set(offer.removed_default_documents) : new Set();
+});
   // Departments and projects state
   const [departments, setDepartments] = useState<Department[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -73,68 +83,12 @@ const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana"
 ];
 
 
-  // Initialize language choice from existing offer
-  useEffect(() => {
-    if (offer && offer.language) {
-      if (offer.language === 'both') {
-        setLanguageChoice('both');
-      } else {
-        setLanguageChoice(offer.language);
-      }
-    }
-  }, [offer]);
-
-  // Load existing notification emails and custom documents when editing
-  useEffect(() => {
-    const loadOfferDetails = async () => {
-      if (offer) {
-        try {
-          const token = localStorage.getItem('token');
-          const response = await fetch(`${API_BASE_URL}/offers/${offer.id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-
-          if (response.ok) {
-            const offerDetails = await response.json();
-            // Parse notification emails if they exist
-            if (offerDetails.notification_emails) {
-              try {
-                const emails = JSON.parse(offerDetails.notification_emails);
-                if (Array.isArray(emails) && emails.length > 0) {
-                  setNotificationEmails(emails);
-                } else {
-                  setNotificationEmails(['']);
-                }
-              } catch (e) {
-                console.error('Error parsing notification emails:', e);
-                setNotificationEmails(['']);
-              }
-            } else {
-              setNotificationEmails(['']);
-            }
-
-            // Load custom required documents
-            if (offerDetails.custom_required_documents && Array.isArray(offerDetails.custom_required_documents)) {
-              setCustomDocuments(offerDetails.custom_required_documents);
-            }
-
-            // Load removed default documents
-            if (offerDetails.removed_default_documents && Array.isArray(offerDetails.removed_default_documents)) {
-              setRemovedDefaultDocuments(new Set(offerDetails.removed_default_documents));
-            }
-          } else {
-            setNotificationEmails(['']);
-          }
-        } catch (error) {
-          console.error('Error loading offer details:', error);
-          setNotificationEmails(['']);
-        }
-      }
-    };
-
-    loadOfferDetails();
-  }, [offer]);
-
+useEffect(() => {
+  if (offer && offer.language) {
+    setLanguageChoice(offer.language as LanguageChoice);
+    setFormData(prev => ({ ...prev, language: offer.language }));
+  }
+}, [offer]);
   // Load departments and projects
   useEffect(() => {
     const loadData = async () => {
@@ -442,9 +396,14 @@ const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana"
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
+console.log('selectedDepartment:', selectedDepartment);
+console.log('selectedProjectId:', selectedProjectId);
+console.log('languageChoice:', languageChoice);
+console.log('currentStep:', currentStep);
     // Validate that a project is selected
     if (!selectedDepartment) {
+        console.log('RETURNING: no department');
+
       await Swal.fire({
         icon: 'warning',
         title: 'Erreur',
@@ -457,6 +416,8 @@ const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana"
     // Find selected project using selected project ID
     const selectedProject = filteredProjects.find(p => p.id.toString() === selectedProjectId);
     if (!selectedProject) {
+        console.log('RETURNING: no project');
+
       await Swal.fire({
         icon: 'warning',
         title: 'Erreur',
@@ -468,6 +429,8 @@ const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana"
 
     // For bilingual offers, validate step 2 before final submission
     if (languageChoice === 'both' && currentStep === 1) {
+        console.log('RETURNING: bilingual step 1');
+
       // Move to step 2
       handleNext();
       return;
@@ -490,11 +453,14 @@ const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana"
     const token = localStorage.getItem('token');
     const formDataToSend = new FormData();
 
+console.log('formData.language:', formData.language);
+console.log('languageChoice:', languageChoice);
     Object.entries(formData).forEach(([key, value]) => {
-      if (key !== 'tdr' && key !== 'tdr_en' && value != null) {
-        formDataToSend.append(key, String(value));
-      }
-    });
+  if (key !== 'tdr' && key !== 'tdr_en' && value != null) {
+    formDataToSend.append(key, String(value));
+  }
+});
+console.log('formData at submit:', formData);
     if (formData.tdr) formDataToSend.append('tdr', formData.tdr);
     if (formData.tdr_en) formDataToSend.append('tdr_en', formData.tdr_en);
 
@@ -520,11 +486,10 @@ const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana"
         body: formDataToSend,
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        onSave(result);
-        onCancel();
-      } else {
+    if (response.ok) {
+  const result = await response.json();
+  onSave(result);
+}else {
         const errorData = await response.json();
         await Swal.fire({
           icon: 'error',
