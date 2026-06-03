@@ -57,6 +57,8 @@ services:
       - OUTLOOK_CLIENT_SECRET=${OUTLOOK_CLIENT_SECRET}
       - OUTLOOK_TENANT_ID=${OUTLOOK_TENANT_ID}
       - OUTLOOK_USER_EMAIL=${OUTLOOK_USER_EMAIL}
+      - OPENROUTER_API_KEY=
+      - OPENROUTER_MODEL=openai/gpt-oss-120b:free
       - NODE_ENV=production
     volumes:
       # Persistent file storage

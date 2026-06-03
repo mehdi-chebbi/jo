@@ -7,6 +7,7 @@ const multer = require('multer');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
+const pdfParse = require('pdf-parse');
 
 // Microsoft Graph API dependencies
 const { ConfidentialClientApplication } = require('@azure/msal-node');
@@ -796,6 +797,19 @@ let pool;
       )
     `);
     console.log('Questions table created');
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ai_rankings (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        application_id INT NOT NULL,
+        ai_score FLOAT NULL,
+        ai_comment TEXT NULL,
+        ai_scored_at TIMESTAMP NULL,
+        FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE,
+        UNIQUE KEY (application_id)
+      )
+    `);
+    console.log('AI rankings table created');
 
     console.log('Database and tables initialized successfully.');
 
@@ -2231,6 +2245,11 @@ app.post('/api/apply', uploadApplicantDynamic.any(), async (req, res) => {
     console.log(`Application submitted successfully by ${full_name} for offer: ${offer.title}`);
     res.json({ id: applicationId, message: 'Application submitted successfully' });
 
+    // Trigger AI scoring asynchronously (don't await — let it run in background)
+    scoreCandidateWithAI(offer_id, applicationId).catch(err => {
+      console.error('Background AI scoring failed:', err.message);
+    });
+
   } catch (err) {
     console.error('Application submission error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -3468,6 +3487,228 @@ app.get('/api/statistics', auth, requireRole(['admin', 'comite_ajout', 'comite_o
   }
 });
 // ───── Start Server ─────
+// ───── AI Ranking ─────
+
+// OpenRouter configuration
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001';
+
+// Helper: extract text from a PDF file
+async function extractPdfText(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return '';
+    const dataBuffer = fs.readFileSync(filePath);
+    const data = await pdfParse(dataBuffer);
+    return data.text || '';
+  } catch (err) {
+    console.error('Error extracting PDF text:', filePath, err.message);
+    return '';
+  }
+}
+
+// Score a single candidate against an offer using OpenRouter
+async function scoreCandidateWithAI(offerId, applicationId) {
+  try {
+    if (!OPENROUTER_API_KEY) {
+      console.warn('OPENROUTER_API_KEY not set, skipping AI scoring');
+      return;
+    }
+
+    // 1. Get offer details + TDR text
+    const [offerRows] = await pool.query(
+      'SELECT id, title, description, type, method, reference, tdr_filepath, tdr_filepath_en FROM offers WHERE id = ?',
+      [offerId]
+    );
+    if (offerRows.length === 0) return;
+    const offer = offerRows[0];
+
+    const tdrPath = offer.tdr_filepath || offer.tdr_filepath_en;
+    const tdrText = await extractPdfText(tdrPath);
+
+    // 2. Get application details + all document texts
+    const [appRows] = await pool.query(
+      `SELECT id, full_name, email, applicant_country,
+        cv_filepath, diplome_filepath, id_card_filepath, cover_letter_filepath,
+        declaration_sur_honneur_filepath, fiche_de_referencement_filepath,
+        extrait_registre_filepath, note_methodologique_filepath,
+        liste_references_filepath, offre_financiere_filepath
+       FROM applications WHERE id = ?`,
+      [applicationId]
+    );
+    if (appRows.length === 0) return;
+    const application = appRows[0];
+
+    // Collect all document texts
+    const docFields = [
+      { key: 'CV', path: application.cv_filepath },
+      { key: 'Diploma', path: application.diplome_filepath },
+      { key: 'Cover Letter', path: application.cover_letter_filepath },
+      { key: 'Declaration sur honneur', path: application.declaration_sur_honneur_filepath },
+      { key: 'Fiche de referencement', path: application.fiche_de_referencement_filepath },
+      { key: 'Extrait registre', path: application.extrait_registre_filepath },
+      { key: 'Note methodologique', path: application.note_methodologique_filepath },
+      { key: 'Liste references', path: application.liste_references_filepath },
+      { key: 'Offre financiere', path: application.offre_financiere_filepath },
+    ];
+
+    // Also get custom documents
+    const [customDocs] = await pool.query(
+      `SELECT acd.document_name, acd.file_path
+       FROM applicant_custom_documents acd
+       WHERE acd.application_id = ?`,
+      [applicationId]
+    );
+
+    // And other documents
+    const [otherDocs] = await pool.query(
+      `SELECT document_name, file_path
+       FROM applicant_other_documents
+       WHERE application_id = ?`,
+      [applicationId]
+    );
+
+    let documentsText = '';
+    for (const doc of docFields) {
+      if (doc.path) {
+        const text = await extractPdfText(doc.path);
+        if (text) {
+          documentsText += `\n--- ${doc.key} ---\n${text.substring(0, 3000)}\n`;
+        }
+      }
+    }
+
+    for (const doc of customDocs) {
+      const text = await extractPdfText(doc.file_path);
+      if (text) {
+        documentsText += `\n--- ${doc.document_name} ---\n${text.substring(0, 3000)}\n`;
+      }
+    }
+
+    for (const doc of otherDocs) {
+      const text = await extractPdfText(doc.file_path);
+      if (text) {
+        documentsText += `\n--- ${doc.document_name} ---\n${text.substring(0, 3000)}\n`;
+      }
+    }
+
+    if (!documentsText.trim()) {
+      console.warn(`No document text extracted for application ${applicationId}`);
+      return;
+    }
+
+    // 3. Build prompt
+    const offerContext = `Offer Title: ${offer.title}
+${tdrText ? `TDR (Terms of Reference):\n${tdrText}` : 'No TDR document available.'}`;
+
+    const prompt = `You are an expert procurement evaluator for an international organization (OSS - Observatoire du Sahara et du Sahel). 
+
+Your task is to evaluate a candidate's application against a specific offer's requirements and provide a score from 0 to 100.
+
+## OFFER REQUIREMENTS:
+${offerContext}
+
+## CANDIDATE: ${application.full_name}
+Country: ${application.applicant_country}
+Email: ${application.email}
+
+## CANDIDATE'S DOCUMENTS:
+${documentsText}
+
+---
+
+Based on the offer requirements and the candidate's submitted documents, evaluate this candidate.
+
+Consider:
+1. How well the candidate's qualifications match the offer requirements
+2. Relevant experience and expertise demonstrated in their documents
+3. Completeness and quality of the application
+4. Alignment with the specific role/project requirements described in the TDR
+
+You MUST respond with EXACTLY this JSON format and nothing else:
+{"score": <number between 0-100>, "comment": "<brief explanation in French of why this score was given, max 3 sentences>"}`;
+
+    // 4. Call OpenRouter API
+    const response = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        model: OPENROUTER_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 500,
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://oss-online.org',
+          'X-Title': 'OSS AI Ranking'
+        }
+      }
+    );
+
+    const content = response.data?.choices?.[0]?.message?.content || '';
+    console.log(`AI scoring response for application ${applicationId}:`, content);
+
+    // 5. Parse response
+    let score = null;
+    let comment = null;
+
+    try {
+      // Try to extract JSON from the response (handle markdown code blocks)
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        score = typeof parsed.score === 'number' ? Math.min(100, Math.max(0, parsed.score)) : null;
+        comment = parsed.comment || null;
+      }
+    } catch (parseErr) {
+      console.error('Failed to parse AI response as JSON:', content);
+      // Try to extract just a number as fallback
+      const numMatch = content.match(/(\d{1,3})/);
+      if (numMatch) {
+        score = Math.min(100, Math.max(0, parseInt(numMatch[1])));
+        comment = content;
+      }
+    }
+
+    if (score === null) return;
+
+    // 6. Store in ai_rankings table
+    await pool.query(
+      `INSERT INTO ai_rankings (application_id, ai_score, ai_comment, ai_scored_at)
+       VALUES (?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE ai_score = VALUES(ai_score), ai_comment = VALUES(ai_comment), ai_scored_at = NOW()`,
+      [applicationId, score, comment]
+    );
+
+    console.log(`AI scoring completed for application ${applicationId}: score=${score}`);
+
+  } catch (err) {
+    console.error('AI scoring error for application', applicationId, ':', err.message);
+  }
+}
+
+// GET endpoint: fetch AI rankings for an offer
+app.get('/api/offers/:id/ai-ranking', auth, requireRole(['comite_ajout', 'comite_ouverture']), async (req, res) => {
+  try {
+    const offerId = req.params.id;
+
+    const [rankings] = await pool.query(`
+      SELECT a.id as application_id, a.full_name, a.email, a.applicant_country, a.created_at,
+             r.ai_score, r.ai_comment, r.ai_scored_at
+      FROM applications a
+      LEFT JOIN ai_rankings r ON a.id = r.application_id
+      WHERE a.offer_id = ?
+      ORDER BY r.ai_score DESC, a.created_at ASC
+    `, [offerId]);
+
+    res.json(rankings);
+  } catch (err) {
+    console.error('Error fetching AI rankings:', err);
+    res.status(500).json({ error: 'Failed to fetch AI rankings' });
+  }
+});
+
 const PORT = 8000;
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);

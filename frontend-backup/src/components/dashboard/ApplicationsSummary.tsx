@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { showAlert } from '../../utils/sweetalertConfig';
+import Swal from 'sweetalert2';
 import { getOfferTypeOnlyInfo } from '../../utils/offerType';
 import { API_BASE_URL } from '../../config';
 import { useI18n } from '../../i18n';
@@ -35,6 +36,7 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
   const [archiving, setArchiving] = useState<number | null>(null);
   const [settingCandidate, setSettingCandidate] = useState<number | null>(null);
   const [settingInfructueux, setSettingInfructueux] = useState<number | null>(null);
+  const [loadingAiRanking, setLoadingAiRanking] = useState<number | null>(null);
   const { t, currentLangPrefix } = useI18n();
   const [filters, setFilters] = useState({
     search: '',
@@ -318,6 +320,103 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
       await showAlert.error(t('rh.swal.selectionFailedTitle'), t('rh.candidateModal.error'));
     } finally {
       setSettingInfructueux(null);
+    }
+  };
+
+  const handleAiRanking = async (offerId: number, offerTitle: string) => {
+    setLoadingAiRanking(offerId);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/offers/${offerId}/ai-ranking`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        await showAlert.error('AI Ranking Error', errorData.error || 'Failed to fetch AI rankings');
+        return;
+      }
+
+      const rankings = await res.json();
+
+      if (!rankings || rankings.length === 0) {
+        await showAlert.info(
+          'Classement IA',
+          'Aucun candidat n\'a encore postulé à cette offre.'
+        );
+        return;
+      }
+
+      // Build HTML for the ranking modal
+      let rankingHtml = `
+        <div style="text-align: left; max-height: 400px; overflow-y: auto;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+              <tr style="border-bottom: 2px solid #e5e7eb;">
+                <th style="padding: 8px; text-align: left;">#</th>
+                <th style="padding: 8px; text-align: left;">Candidat</th>
+                <th style="padding: 8px; text-align: left;">Pays</th>
+                <th style="padding: 8px; text-align: center;">Score IA</th>
+                <th style="padding: 8px; text-align: left;">Commentaire</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      rankings.forEach((r: any, index: number) => {
+        const scoreColor = r.ai_score === null ? '#9ca3af' :
+          r.ai_score >= 80 ? '#059669' :
+          r.ai_score >= 60 ? '#d97706' :
+          r.ai_score >= 40 ? '#ea580c' : '#dc2626';
+
+        const scoreBadge = r.ai_score !== null
+          ? `<span style="background: ${scoreColor}; color: white; padding: 2px 10px; border-radius: 12px; font-weight: 600; font-size: 12px;">${r.ai_score}/100</span>`
+          : '<span style="color: #9ca3af; font-style: italic;">En attente...</span>';
+
+        rankingHtml += `
+          <tr style="border-bottom: 1px solid #f3f4f6; ${index === 0 && r.ai_score !== null ? 'background: #f0fdf4;' : ''}">
+            <td style="padding: 8px; font-weight: 600;">${r.ai_score !== null ? index + 1 : '–'}</td>
+            <td style="padding: 8px; font-weight: 500;">${r.full_name}</td>
+            <td style="padding: 8px;">${r.applicant_country}</td>
+            <td style="padding: 8px; text-align: center;">${scoreBadge}</td>
+            <td style="padding: 8px; font-size: 12px; color: #6b7280; max-width: 200px;">${r.ai_comment || '–'}</td>
+          </tr>
+        `;
+      });
+
+      rankingHtml += `
+            </tbody>
+          </table>
+          <p style="margin-top: 12px; font-size: 11px; color: #9ca3af; text-align: center;">
+            Les scores sont calculés automatiquement par IA lors de la soumission de chaque candidature.
+          </p>
+        </div>
+      `;
+
+      await Swal.fire({
+        title: `🤖 Classement IA – ${offerTitle}`,
+        html: rankingHtml,
+        width: 750,
+        showConfirmButton: true,
+        confirmButtonText: 'Fermer',
+        buttonsStyling: false,
+        customClass: {
+          confirmButton: 'swal2-confirm',
+          popup: 'swal2-popup'
+        },
+        showClass: {
+          popup: 'animate__animated animate__fadeInDown'
+        },
+        hideClass: {
+          popup: 'animate__animated animate__fadeOutUp'
+        }
+      });
+
+    } catch (error) {
+      console.error('Error fetching AI ranking:', error);
+      await showAlert.error('AI Ranking Error', 'Failed to fetch AI rankings');
+    } finally {
+      setLoadingAiRanking(null);
     }
   };
 
@@ -685,6 +784,45 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
                               : summary.status === 'actif'
                                 ? 'Marquage désactivé – offre toujours active'
                                 : 'Marquage désactivé – offre terminée'
+                          }
+                        </p>
+                      </div>
+
+                      {/* 5. AI Ranking Button */}
+                      <div>
+                        <button
+                          onClick={() => handleAiRanking(summary.offer_id, summary.offer_title)}
+                          disabled={loadingAiRanking === summary.offer_id || summary.status === 'actif' || summary.status === 'resultat' || summary.status === 'infructueux' || !!summary.winner_name}
+                          className={`w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                            summary.status === 'sous_evaluation' && !summary.winner_name
+                              ? 'bg-purple-600 text-white hover:bg-purple-700'
+                              : 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                          }`}
+                        >
+                          {loadingAiRanking === summary.offer_id ? (
+                            <>
+                              <svg className="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.001 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              Chargement...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                              </svg>
+                              🤖 Classement IA
+                            </>
+                          )}
+                        </button>
+                        <p className="text-xs text-gray-500 mt-1 text-center">
+                          {summary.status === 'sous_evaluation' && !summary.winner_name
+                            ? 'Voir le classement des candidats par IA'
+                            : summary.status === 'actif'
+                              ? 'Classement IA désactivé – offre toujours active'
+                              : summary.winner_name
+                                ? 'Candidat déjà sélectionné'
+                                : 'Classement IA désactivé – offre terminée'
                           }
                         </p>
                       </div>
