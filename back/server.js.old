@@ -38,27 +38,6 @@ function getLocalDate() {
   return new Date(utc + 3600000); // Add 1 hour (3600000ms) for UTC+1
 }
 
-// Helper function to strip UTC 'Z' from datetime values returned by mysql2
-// so the browser treats them as wall-clock (local) time, not UTC instants.
-function stripTimezoneFromDatetime(value) {
-  if (!value) return value;
-  const s = value instanceof Date ? value.toISOString() : String(value);
-  // "2026-03-22T23:59:00.000Z" → "2026-03-22T23:59:00"
-  return s.replace(/\.\d{3}Z$/, '').replace(/Z$/, '');
-}
-
-// Normalize offer object: strip timezone from datetime fields for client
-function normalizeOffer(offer) {
-  if (!offer) return offer;
-  return {
-    ...offer,
-    deadline: stripTimezoneFromDatetime(offer.deadline),
-    created_at: stripTimezoneFromDatetime(offer.created_at),
-    archived_at: stripTimezoneFromDatetime(offer.archived_at),
-    answered_at: stripTimezoneFromDatetime(offer.answered_at),
-  };
-}
-
 // Helper function to convert ISO datetime to MySQL DATETIME format
 // Handles both ISO format (2026-05-06T23:00:00.000Z) and already formatted (2026-05-06 23:00:00)
 function convertToMySQLDateTime(isoDateTime) {
@@ -76,8 +55,8 @@ const allowedOrigins = [
   'http://127.0.0.1:5173',
   'http://127.0.0.1:3000',
   'https://sapmr.oss-online.org:91',
-'https://procurement.oss-online.org'
-,'https://application.oss-online.org'
+'https://procurement.oss-online.org',
+'https://application.oss-online.org'
 ];
 
 app.use(cors({
@@ -595,8 +574,7 @@ const DB_CONFIG = {
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'rh_app',
-  port: Number(process.env.DB_PORT) || 3306,
-  timezone: '+00:00',
+  port: Number(process.env.DB_PORT) || 3306
 };
 const JWT_SECRET = 'your_jwt_secret'; // Use env var in production
 let pool;
@@ -1292,7 +1270,7 @@ app.get('/api/offers', async (req, res) => {
         tdr_url: offer.tdr_filename ? `/offers/${offer.id}/tdr` : null
       };
     });
-    res.json(offersWithUrl.map(normalizeOffer));
+    res.json(offersWithUrl);
   } catch (err) {
     console.error('Error fetching offers:', err);
     res.status(500).json({ error: 'Failed to fetch offers' });
@@ -1363,7 +1341,7 @@ app.get('/api/offers/dashboard', auth, requireRole(['comite_ajout', 'comite_ouve
         tdr_url: offer.tdr_filename ? `/offers/${offer.id}/tdr` : null
       };
     });
-    res.json(offersWithUrl.map(normalizeOffer));
+    res.json(offersWithUrl);
   } catch (err) {
     console.error('Error fetching dashboard offers:', err);
     res.status(500).json({ error: 'Failed to fetch dashboard offers' });
@@ -1446,7 +1424,7 @@ app.get('/api/offers/:id', async (req, res) => {
         : null
     };
 
-    res.json(normalizeOffer(offerWithUrl));
+    res.json(offerWithUrl);
   } catch (err) {
     console.error('Error fetching offer:', err);
     res.status(500).json({ error: 'Failed to fetch offer' });
@@ -1570,7 +1548,7 @@ app.post('/api/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fi
       [offerId]
     );
 
-    const offerData = normalizeOffer({ ...newOffer[0], custom_required_documents: customDocs });
+    const offerData = { ...newOffer[0], custom_required_documents: customDocs };
 
     logOfferAction(req.user, 'created', title);
     res.json(offerData);
@@ -1712,7 +1690,7 @@ app.put('/api/offers/:id', auth, requireRole('comite_ajout'), uploadTdrBilingual
       [id]
     );
 
-    const offerData = normalizeOffer({ ...updatedOffer[0], custom_required_documents: customDocs });
+    const offerData = { ...updatedOffer[0], custom_required_documents: customDocs };
 
     logOfferAction(req.user, 'updated', title);
     res.json(offerData);
@@ -2336,7 +2314,7 @@ app.get('/api/applications/summary', auth, requireRole(['comite_ajout', 'comite_
       ORDER BY o.deadline ASC
     `, [...params]);
 
-    res.json(summary.map(normalizeOffer));
+    res.json(summary);
   } catch (err) {
     console.error('Error fetching application summary:', err);
     res.status(500).json({ error: 'Failed to fetch application summary' });
