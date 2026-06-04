@@ -88,15 +88,20 @@
   margin-bottom: 1rem !important;
 }
 
-/* Fix input field styling */
-.swal2-input {
+/* Fix input field styling - only when visible */
+.swal2-input,
+.swal2-input-custom {
+  box-sizing: border-box !important;
   border: 1px solid #d1d5db !important;
   border-radius: 0.375rem !important;
   padding: 0.5rem 0.75rem !important;
   font-size: 0.875rem !important;
   color: #1f2937 !important;
-  width: 100% !important;
+  width: 80% !important;
+  max-width: 300px !important;
   margin-top: 0.5rem !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
 }
 
 .swal2-input:focus {

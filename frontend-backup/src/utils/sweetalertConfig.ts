@@ -107,13 +107,17 @@ export const showAlert = {
       title,
       input: 'text',
       inputPlaceholder,
+      inputAttributes: {
+        style: 'box-sizing: border-box; width: 80%; max-width: 300px; margin: 0.5rem auto 0 auto; display: block;'
+      },
       showCancelButton: true,
       confirmButtonText: 'OK',
       cancelButtonText: 'Annuler',
       buttonsStyling: false,
       customClass: {
         confirmButton: 'swal2-confirm',
-        cancelButton: 'swal2-cancel'
+        cancelButton: 'swal2-cancel',
+        input: 'swal2-input-custom'
       },
       showClass: {
         popup: 'animate__animated animate__fadeInDown'

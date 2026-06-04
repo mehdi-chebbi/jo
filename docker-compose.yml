@@ -1,18 +1,17 @@
-version: '3.8'
-
 services:
   # ─────────────────────────────────────────────────────
-  # NGINX - Reverse Proxy (Main Entry Point)
-  # Listens on port 80, exposed as port 90 externally
+  # NGINX - Reverse Proxy + Frontend Static Files
+  # Builds React app and serves it, plus proxies /api/ to backend
   # ─────────────────────────────────────────────────────
   nginx:
-    image: nginx:alpine
+    build:
+      context: .
+      dockerfile: nginx.Dockerfile
     container_name: oss-nginx
     ports:
       - "91:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - frontend_build:/usr/share/nginx/html:ro
     depends_on:
       - backend
     networks:
@@ -23,21 +22,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # ─────────────────────────────────────────────────────
-  # FRONTEND - React Application Builder
-  # Builds static files and shares with nginx
-  # ─────────────────────────────────────────────────────
-  frontend:
-    build:
-      context: ./frontend-backup
-      dockerfile: Dockerfile.prod
-    container_name: oss-frontend
-    volumes:
-      - frontend_build:/usr/share/nginx/html
-    networks:
-      - oss-network
-    restart: "no"  # Only needs to run once to build
 
   # ─────────────────────────────────────────────────────
   # BACKEND - Express.js API Server
@@ -108,8 +92,6 @@ services:
 # VOLUMES
 # ─────────────────────────────────────────────────────
 volumes:
-  frontend_build:
-    name: oss-frontend-build
   mysql_data:
     name: oss-mysql-data
 
