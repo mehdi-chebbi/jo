@@ -3,8 +3,20 @@ import { Link } from 'react-router-dom';
 import { showAlert } from '../../utils/sweetalertConfig';
 import Swal from 'sweetalert2';
 import { getOfferTypeOnlyInfo } from '../../utils/offerType';
+import { getOfferTypeName, getOfferMethodName, getCountryName } from '../../utils/translations';
 import { API_BASE_URL } from '../../config';
 import { useI18n } from '../../i18n';
+
+// Escape user-provided strings before injecting into SweetAlert2 HTML
+const escapeHtml = (str: string | null | undefined): string => {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
 
 interface User {
   id: number;
@@ -37,7 +49,9 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
   const [settingCandidate, setSettingCandidate] = useState<number | null>(null);
   const [settingInfructueux, setSettingInfructueux] = useState<number | null>(null);
   const [loadingAiRanking, setLoadingAiRanking] = useState<number | null>(null);
-  const { t, currentLangPrefix } = useI18n();
+  const [revertingWinner, setRevertingWinner] = useState<number | null>(null);
+  const [revertingInfructueux, setRevertingInfructueux] = useState<number | null>(null);
+  const { t, currentLangPrefix, lang } = useI18n();
   const [filters, setFilters] = useState({
     search: '',
     type: '',
@@ -323,6 +337,111 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
     }
   };
 
+  // Revert a previously-set winner (status 'resultat' -> 'sous_evaluation', clears winner)
+  const handleRevertWinner = async (offerId: number, offerTitle: string, winnerName: string) => {
+    const confirmText = t('rh.swal.revertWinnerConfirmation')
+      .replace('{offerTitle}', offerTitle)
+      .replace('{winner}', winnerName);
+
+    const result = await showAlert.confirm(
+      t('rh.swal.revertWinnerTitle'),
+      confirmText,
+      t('rh.swal.revertWinnerConfirm'),
+      t('rh.swal.revertWinnerCancel')
+    );
+
+    if (!result.isConfirmed) {
+      return;
+    }
+
+    setRevertingWinner(offerId);
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/offers/${offerId}/revert-winner`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        await showAlert.success(
+          t('rh.swal.revertWinnerCompleteTitle'),
+          t('rh.swal.revertWinnerCompleteText')
+        );
+        await fetchOfferSummaries();
+      } else {
+        const errorData = await response.json();
+        let errorMessage = errorData.error || 'Unknown error';
+        if (errorMessage.includes('resultat')) {
+          errorMessage = 'Offer must be in "resultat" status to revert the winner.';
+        } else if (errorMessage.includes('not found')) {
+          errorMessage = 'Offer not found or you do not have permission to modify this offer.';
+        }
+        await showAlert.error(t('rh.swal.revertWinnerFailedTitle'), errorMessage);
+      }
+    } catch (err) {
+      console.error('Error reverting winner:', err);
+      await showAlert.error(t('rh.swal.revertWinnerFailedTitle'), 'Network error');
+    } finally {
+      setRevertingWinner(null);
+    }
+  };
+
+  // Revert a previously-set infructueux status (status 'infructueux' -> 'sous_evaluation')
+  const handleRevertInfructueux = async (offerId: number, offerTitle: string) => {
+    const confirmText = t('rh.swal.revertInfructueuxConfirmation')
+      .replace('{offerTitle}', offerTitle);
+
+    const result = await showAlert.confirm(
+      t('rh.swal.revertInfructueuxTitle'),
+      confirmText,
+      t('rh.swal.revertInfructueuxConfirm'),
+      t('rh.swal.revertInfructueuxCancel')
+    );
+
+    if (!result.isConfirmed) {
+      return;
+    }
+
+    setRevertingInfructueux(offerId);
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/offers/${offerId}/revert-infructueux`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        await showAlert.success(
+          t('rh.swal.revertInfructueuxCompleteTitle'),
+          t('rh.swal.revertInfructueuxCompleteText')
+        );
+        await fetchOfferSummaries();
+      } else {
+        const errorData = await response.json();
+        let errorMessage = errorData.error || 'Unknown error';
+        if (errorMessage.includes('infructueux')) {
+          errorMessage = 'Offer must be in "infructueux" status to revert.';
+        } else if (errorMessage.includes('not found')) {
+          errorMessage = 'Offer not found or you do not have permission to modify this offer.';
+        }
+        await showAlert.error(t('rh.swal.revertInfructueuxFailedTitle'), errorMessage);
+      }
+    } catch (err) {
+      console.error('Error reverting infructueux:', err);
+      await showAlert.error(t('rh.swal.revertInfructueuxFailedTitle'), 'Network error');
+    } finally {
+      setRevertingInfructueux(null);
+    }
+  };
+
   const handleAiRanking = async (offerId: number, offerTitle: string) => {
     setLoadingAiRanking(offerId);
     try {
@@ -417,6 +536,163 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
       await showAlert.error('AI Ranking Error', 'Failed to fetch AI rankings');
     } finally {
       setLoadingAiRanking(null);
+    }
+  };
+
+  // Open a SweetAlert2 popup with the full offer details (incl. TDR downloads)
+  // Solves: long titles truncation + provides a place to read TDR.
+  const handleShowOfferDetails = async (offerId: number) => {
+    Swal.fire({
+      title: t('rh.offerDetails.loading'),
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false,
+      didOpen: () => Swal.showLoading(),
+    });
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/offers/${offerId}?lang=${lang}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to fetch offer');
+      }
+
+      const offer = await res.json();
+
+      // Application count comes from the already-loaded summary
+      const relatedSummary = offerSummaries.find((s) => s.offer_id === offerId);
+      const applicationCount = relatedSummary?.application_count ?? 0;
+
+      // Deadline display: always show formatted date + status suffix
+      const deadlineDate = new Date(offer.deadline);
+      const now = new Date();
+      const isExpired = deadlineDate <= now;
+      const daysLeft = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const locale = lang === 'fr' ? 'fr-FR' : 'en-US';
+      const formattedDeadline = deadlineDate.toLocaleDateString(locale, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      const deadlineStatus = isExpired
+        ? t('rh.deadlineExpired')
+        : daysLeft === 0
+          ? t('rh.deadlineToday')
+          : t('rh.deadlineDaysLeft').replace('{days}', daysLeft.toString());
+      const deadlineColor = isExpired ? '#ef4444' : daysLeft <= 7 ? '#f59e0b' : '#10b981';
+
+      // Status badge config
+      const statusConfig: { [key: string]: { color: string; label: string } } = {
+        actif: { color: '#10b981', label: t('rh.status.actif') },
+        sous_evaluation: { color: '#f59e0b', label: t('rh.status.sousEvaluation') },
+        resultat: { color: '#3b82f6', label: t('rh.status.resultat') },
+        infructueux: { color: '#ef4444', label: t('rh.status.infructueux') },
+      };
+      const statusInfo = statusConfig[offer.status] || { color: '#6b7280', label: offer.status };
+
+      // Localized names
+      const typeName = getOfferTypeName(offer.type, lang);
+      const methodName = offer.method ? getOfferMethodName(offer.method, lang) : null;
+      const countryName = offer.country ? getCountryName(offer.country, lang) : null;
+
+      // Created date
+      const createdDate = offer.created_at
+        ? new Date(offer.created_at).toLocaleDateString(locale, {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+          })
+        : null;
+
+      // TDR availability (backend returns both filenames regardless of ?lang=)
+      const hasFrTdr = !!offer.tdr_filename || !!offer.tdr_filepath;
+      const hasEnTdr = !!(offer.tdr_filename_en || offer.tdr_filepath_en);
+
+      // Description (multi-line safe)
+      const description = offer.description
+        ? escapeHtml(offer.description).replace(/\n/g, '<br>')
+        : null;
+
+      // Row helper for the details table
+      const row = (label: string, value: string) => `
+        <tr>
+          <td style="padding: 10px 12px; vertical-align: top; font-weight: 600; color: #6b7280; width: 38%; border-bottom: 1px solid #f3f4f6;">${escapeHtml(label)}</td>
+          <td style="padding: 10px 12px; vertical-align: top; color: #111827; border-bottom: 1px solid #f3f4f6;">${value}</td>
+        </tr>
+      `;
+
+      const tdrIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>`;
+
+      const detailsHtml = `
+        <div style="text-align: left; max-height: 62vh; overflow-y: auto; padding-right: 4px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 16px;">
+            ${offer.reference ? row(t('rh.offerDetails.reference'), escapeHtml(offer.reference)) : ''}
+            ${row(t('rh.offerDetails.type'), escapeHtml(typeName))}
+            ${methodName ? row(t('rh.offerDetails.method'), escapeHtml(methodName)) : ''}
+            ${countryName ? row(t('rh.offerDetails.country'), escapeHtml(countryName)) : ''}
+            ${offer.department_name ? row(t('rh.offerDetails.department'), escapeHtml(offer.department_name)) : ''}
+            ${offer.project_name ? row(t('rh.offerDetails.project'), escapeHtml(offer.project_name)) : ''}
+            ${row(t('rh.offerDetails.status'), `<span style="background: ${statusInfo.color}; color: white; padding: 3px 12px; border-radius: 12px; font-weight: 600; font-size: 12px; white-space: nowrap;">${escapeHtml(statusInfo.label)}</span>`)}
+            ${row(t('rh.offerDetails.deadline'), `${escapeHtml(formattedDeadline)} <span style="color: ${deadlineColor}; font-weight: 500; margin-left: 6px;">· ${escapeHtml(deadlineStatus)}</span>`)}
+            ${row(t('rh.offerDetails.applications'), `<span style="background: #dbeafe; color: #1e40af; padding: 3px 12px; border-radius: 12px; font-weight: 600; font-size: 12px;">${applicationCount} ${escapeHtml(lang === 'fr' ? 'candidat(s)' : 'candidate(s)')}</span>`)}
+            ${offer.winner_name
+              ? row(t('rh.offerDetails.winner'), `<span style="color: #059669; font-weight: 600;">✓ ${escapeHtml(offer.winner_name)}</span>`)
+              : row(t('rh.offerDetails.winner'), `<span style="color: #9ca3af; font-style: italic;">${escapeHtml(t('rh.offerDetails.noWinner'))}</span>`)
+            }
+            ${createdDate ? row(t('rh.offerDetails.createdOn'), escapeHtml(createdDate)) : ''}
+          </table>
+
+          ${description ? `
+            <div style="margin-top: 16px;">
+              <h4 style="font-size: 13px; font-weight: 600; color: #6b7280; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.03em;">${escapeHtml(t('rh.offerDetails.description'))}</h4>
+              <div style="background: #f9fafb; padding: 12px; border-radius: 8px; font-size: 13px; color: #374151; line-height: 1.6; max-height: 200px; overflow-y: auto; border-left: 3px solid #e5e7eb;">${description}</div>
+            </div>
+          ` : ''}
+
+          <div style="margin-top: 16px;">
+            <h4 style="font-size: 13px; font-weight: 600; color: #6b7280; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.03em;">${escapeHtml(t('rh.offerDetails.tdr'))}</h4>
+            ${hasFrTdr || hasEnTdr ? `
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                ${hasFrTdr ? `
+                  <a href="${API_BASE_URL}/offers/${offerId}/tdr?lang=fr" target="_blank" rel="noopener noreferrer"
+                     style="display: inline-flex; align-items: center; padding: 8px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 8px; font-weight: 500; font-size: 13px;">
+                    ${tdrIcon}${escapeHtml(t('rh.offerDetails.tdrFr'))}
+                  </a>
+                ` : ''}
+                ${hasEnTdr ? `
+                  <a href="${API_BASE_URL}/offers/${offerId}/tdr?lang=en" target="_blank" rel="noopener noreferrer"
+                     style="display: inline-flex; align-items: center; padding: 8px 16px; background: #7c3aed; color: white; text-decoration: none; border-radius: 8px; font-weight: 500; font-size: 13px;">
+                    ${tdrIcon}${escapeHtml(t('rh.offerDetails.tdrEn'))}
+                  </a>
+                ` : ''}
+              </div>
+            ` : `
+              <p style="color: #9ca3af; font-style: italic; font-size: 13px;">${escapeHtml(t('rh.offerDetails.tdrNotAvailable'))}</p>
+            `}
+          </div>
+        </div>
+      `;
+
+      Swal.fire({
+        titleText: offer.title,
+        html: detailsHtml,
+        width: 720,
+        showConfirmButton: true,
+        confirmButtonText: t('rh.offerDetails.close'),
+        buttonsStyling: false,
+        customClass: {
+          confirmButton: 'swal2-confirm',
+          popup: 'swal2-popup',
+        },
+        showClass: { popup: 'animate__animated animate__fadeInDown' },
+        hideClass: { popup: 'animate__animated animate__fadeOutUp' },
+      });
+    } catch (err) {
+      console.error('Error fetching offer details:', err);
+      await showAlert.error(t('rh.offerDetails.error'));
     }
   };
 
@@ -596,7 +872,21 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
                           </span>
                         );
                       })()}
-                      <h3 className="text-lg font-semibold text-gray-900 mt-2 line-clamp-2">{summary.offer_title}</h3>
+                      <h3
+                        className="text-lg font-semibold text-gray-900 mt-2 line-clamp-2 cursor-pointer hover:text-blue-600 hover:underline transition-colors"
+                        onClick={() => handleShowOfferDetails(summary.offer_id)}
+                        title={t('rh.offerDetails.viewDetails')}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleShowOfferDetails(summary.offer_id);
+                          }
+                        }}
+                      >
+                        {summary.offer_title}
+                      </h3>
                     </div>
                     <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       summary.status === 'actif' ? 'bg-green-100 text-green-800' :
@@ -636,7 +926,20 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
                     }`}>
                       <span className="text-sm">{t('rh.deadlineLabel')}</span>
                       <span className="text-sm font-medium">
-                        {isExpired ? t('offer.expired') : `${daysLeft} ${t('rh.daysLeft')}`}
+                        {(() => {
+                          const locale = lang === 'fr' ? 'fr-FR' : 'en-US';
+                          const formattedDate = deadlineDate.toLocaleDateString(locale, {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                          });
+                          const statusText = isExpired
+                            ? t('rh.deadlineExpired')
+                            : daysLeft === 0
+                              ? t('rh.deadlineToday')
+                              : t('rh.deadlineDaysLeft').replace('{days}', daysLeft.toString());
+                          return `${formattedDate} · ${statusText}`;
+                        })()}
                       </span>
                     </div>
                   </div>
@@ -826,6 +1129,66 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
                           }
                         </p>
                       </div>
+
+                      {/* 6. Revert Winner Button - only when status is 'resultat' */}
+                      {summary.status === 'resultat' && summary.winner_name && (
+                        <div>
+                          <button
+                            onClick={() => handleRevertWinner(summary.offer_id, summary.offer_title, summary.winner_name!)}
+                            disabled={revertingWinner === summary.offer_id || revertingInfructueux === summary.offer_id}
+                            className="w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300"
+                          >
+                            {revertingWinner === summary.offer_id ? (
+                              <>
+                                <svg className="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.001 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                {t('rh.button.reverting')}
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                                </svg>
+                                {t('rh.button.revertWinner')}
+                              </>
+                            )}
+                          </button>
+                          <p className="text-xs text-amber-700 mt-1 text-center">
+                            {t('rh.swal.archiveWarning')}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* 7. Revert Infructueux Button - only when status is 'infructueux' */}
+                      {summary.status === 'infructueux' && (
+                        <div>
+                          <button
+                            onClick={() => handleRevertInfructueux(summary.offer_id, summary.offer_title)}
+                            disabled={revertingWinner === summary.offer_id || revertingInfructueux === summary.offer_id}
+                            className="w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300"
+                          >
+                            {revertingInfructueux === summary.offer_id ? (
+                              <>
+                                <svg className="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.001 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                {t('rh.button.reverting')}
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                                </svg>
+                                {t('rh.button.revertInfructueux')}
+                              </>
+                            )}
+                          </button>
+                          <p className="text-xs text-amber-700 mt-1 text-center">
+                            {t('rh.swal.archiveWarning')}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 

@@ -1868,6 +1868,83 @@ app.post('/api/offers/:id/set-infructueux', auth, requireRole('comite_ouverture'
   }
 });
 
+// Revert winner for an offer (status 'resultat' -> 'sous_evaluation', clears winner_name)
+// Allows the committee to undo a winner selection made by mistake.
+// Note: archived applications are NOT restored — they remain as historical records.
+app.post('/api/offers/:id/revert-winner', auth, requireRole('comite_ouverture'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [offerCheck] = await pool.query('SELECT id, title, status, winner_name FROM offers WHERE id = ?', [id]);
+
+    if (offerCheck.length === 0) {
+      return res.status(404).json({ error: 'Offer not found or access denied' });
+    }
+
+    const offer = offerCheck[0];
+
+    // Only allow reverting from 'resultat' status
+    if (offer.status !== 'resultat') {
+      return res.status(400).json({ error: 'Offer must be in "resultat" status to revert the winner' });
+    }
+
+    // Reset status to sous_evaluation and clear winner_name
+    await pool.query(
+      'UPDATE offers SET status = ?, winner_name = NULL WHERE id = ?',
+      ['sous_evaluation', id]
+    );
+
+    logOfferAction(req.user, `reverted winner for`, `"${offer.title}" - Previous winner: ${offer.winner_name || 'unknown'}`);
+    res.json({
+      message: `Winner has been reverted for offer "${offer.title}"`,
+      status: 'sous_evaluation',
+      previous_winner: offer.winner_name
+    });
+
+  } catch (err) {
+    console.error('Error reverting winner:', err);
+    res.status(500).json({ error: 'Failed to revert winner' });
+  }
+});
+
+// Revert infructueux status for an offer (status 'infructueux' -> 'sous_evaluation')
+// Allows the committee to undo an infructueux marking made by mistake.
+// Note: archived applications are NOT restored — they remain as historical records.
+app.post('/api/offers/:id/revert-infructueux', auth, requireRole('comite_ouverture'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [offerCheck] = await pool.query('SELECT id, title, status FROM offers WHERE id = ?', [id]);
+
+    if (offerCheck.length === 0) {
+      return res.status(404).json({ error: 'Offer not found or access denied' });
+    }
+
+    const offer = offerCheck[0];
+
+    // Only allow reverting from 'infructueux' status
+    if (offer.status !== 'infructueux') {
+      return res.status(400).json({ error: 'Offer must be in "infructueux" status to revert' });
+    }
+
+    // Reset status to sous_evaluation
+    await pool.query(
+      'UPDATE offers SET status = ? WHERE id = ?',
+      ['sous_evaluation', id]
+    );
+
+    logOfferAction(req.user, `reverted infructueux status for`, `"${offer.title}"`);
+    res.json({
+      message: `Offer "${offer.title}" has been reverted from infructueux to sous_evaluation`,
+      status: 'sous_evaluation'
+    });
+
+  } catch (err) {
+    console.error('Error reverting infructueux:', err);
+    res.status(500).json({ error: 'Failed to revert infructueux' });
+  }
+});
+
 // Extend offer deadline
 app.post('/api/offers/:id/extend', auth, requireRole('comite_ajout'), async (req, res) => {
   try {

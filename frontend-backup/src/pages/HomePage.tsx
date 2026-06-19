@@ -94,9 +94,13 @@ const HomePage = ({ offers }: { offers: Offer[] }) => {
 
     return displayOffers
       .filter(offer => {
-        const matchesSearch = offer.title.toLowerCase().includes(filters.search.toLowerCase()) ||
-                             offer.description.toLowerCase().includes(filters.search.toLowerCase());
-        return matchesSearch;
+        // Null-safe: some offers may have null title/description in the DB.
+        // Without these guards, typing in the search box crashes the whole page
+        // with "Cannot read properties of null (reading 'toLowerCase')".
+        const offerTitle = (offer.title ?? '').toLowerCase();
+        const offerDescription = (offer.description ?? '').toLowerCase();
+        const searchQuery = filters.search.toLowerCase();
+        return offerTitle.includes(searchQuery) || offerDescription.includes(searchQuery);
       })
       .sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
   }, [displayOffers, filters.search]);
