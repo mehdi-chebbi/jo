@@ -3,6 +3,7 @@ import type { Offer, Department, Project, OfferType, OfferMethod } from '../../t
 import { API_BASE_URL } from '../../config';
 import { useI18n } from '../../i18n';
 import { getOfferTypeOptions, getOfferMethodOptions, getRequiredDocumentsForMethod } from '../../utils/offerType';
+import { generateReference } from '../../utils/referenceGenerator';
 import Swal from 'sweetalert2';
 
 type LanguageChoice = 'fr' | 'en' | 'both';
@@ -31,6 +32,7 @@ deadline: offer?.deadline ? offer.deadline.replace(' ', 'T').substring(0, 16) : 
   });
 
 const [newDocumentName, setNewDocumentName] = useState('');
+  const [nextRefNumber, setNextRefNumber] = useState<string | null>(null);
 
   // Removed default documents state
 const [notificationEmails, setNotificationEmails] = useState<string[]>(() => {
@@ -113,6 +115,15 @@ useEffect(() => {
           const projData = await projResponse.json();
           setProjects(projData);
         }
+
+        // Load next reference number
+        const refResponse = await fetch(`${API_BASE_URL}/offers/next-reference-number`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (refResponse.ok) {
+          const refData = await refResponse.json();
+          setNextRefNumber(refData.number);
+        }
       } catch (error) {
         console.error('Error loading departments and projects:', error);
       } finally {
@@ -122,6 +133,34 @@ useEffect(() => {
 
     loadData();
   }, []);
+
+  // Handle generate reference
+  const handleGenerateReference = () => {
+    if (!nextRefNumber) return;
+
+    const selectedProject = projects.find(p => p.id.toString() === selectedProjectId);
+    const projectName = selectedProject ? selectedProject.name : '';
+    const title = formData.title;
+
+    if (!formData.method || !projectName || !title) {
+      Swal.fire({
+        icon: 'warning',
+        title: t('rh.form.generateReferenceTitle'),
+        text: t('rh.form.generateReferenceText'),
+        confirmButtonColor: '#16a34a',
+      });
+      return;
+    }
+
+    const reference = generateReference({
+      method: formData.method,
+      projectName,
+      title,
+      offerNumber: nextRefNumber,
+    });
+
+    setFormData(prev => ({ ...prev, reference }));
+  };
 
   // Handle department selection
   const handleDepartmentChange = (departmentId: string) => {
@@ -753,22 +792,9 @@ console.log('formData at submit:', formData);
         </>
       )}
 
-      {/* Reference, Country, Department, Project, Deadline, TDR, Custom Documents, Notification Emails (only in step 1 or for non-bilingual) */}
+      {/* Country, Department, Project, Deadline, Reference, TDR, Custom Documents, Notification Emails (only in step 1 or for non-bilingual) */}
       {(!showStepIndicator || currentStep === 1) && (
         <>
-          <div className="space-y-2">
-            <label htmlFor="reference" className="block text-sm font-semibold text-gray-800 mb-2">{t('rh.form.reference')}</label>
-            <input
-              type="text"
-              id="reference"
-              name="reference"
-              className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
-              value={formData.reference}
-              onChange={handleChange}
-              required
-            />
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2 relative" ref={countryDropdownRef}>
               <label htmlFor="country" className="block text-sm font-semibold text-gray-800 mb-2">{t('rh.form.country')}</label>
@@ -952,8 +978,34 @@ console.log('formData at submit:', formData);
       </div>
     </div>
   </div>
-
 </div>
+
+          <div className="space-y-2">
+            <label htmlFor="reference" className="block text-sm font-semibold text-gray-800 mb-2">{t('rh.form.reference')}</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                id="reference"
+                name="reference"
+                placeholder="AO/OSS/project/title-abbrev/DDMMYYYY-XX"
+                className="flex-1 mt-1 block border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+                value={formData.reference}
+                onChange={handleChange}
+                required
+              />
+              <button
+                type="button"
+                onClick={handleGenerateReference}
+                disabled={!nextRefNumber}
+                className="mt-1 inline-flex items-center px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm font-medium"
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                {t('rh.form.generateReference')}
+              </button>
+            </div>
+          </div>
 
           <div className="space-y-2">
             <label htmlFor="tdr" className="block text-sm font-semibold text-gray-800 mb-2">

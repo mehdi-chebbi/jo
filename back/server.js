@@ -597,6 +597,7 @@ const DB_CONFIG = {
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'rh_app',
   port: Number(process.env.DB_PORT) || 3306,
+  charset: 'utf8mb4',
   timezone: '+00:00',
 };
 const JWT_SECRET = 'your_jwt_secret'; // Use env var in production
@@ -1381,6 +1382,20 @@ app.get('/api/offers/dashboard', auth, requireRole(['comite_ajout', 'comite_ouve
   } catch (err) {
     console.error('Error fetching dashboard offers:', err);
     res.status(500).json({ error: 'Failed to fetch dashboard offers' });
+  }
+});
+
+// Get the next offer reference number for the current year
+app.get('/api/offers/next-reference-number', auth, requireRole('comite_ajout'), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) as count FROM offers WHERE YEAR(created_at) = YEAR(CURDATE())`
+    );
+    const nextNumber = (rows[0].count + 1).toString().padStart(2, '0');
+    res.json({ number: nextNumber });
+  } catch (err) {
+    console.error('Error fetching next reference number:', err);
+    res.status(500).json({ error: 'Failed to fetch next reference number' });
   }
 });
 
