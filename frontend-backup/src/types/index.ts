@@ -63,6 +63,7 @@ export type CustomRequiredDocument = {
   id: number;
   offer_id: number;
   document_name: string;
+  document_name_en?: string | null;
   document_key: string;
   required: boolean;
   created_at: string;

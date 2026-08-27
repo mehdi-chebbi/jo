@@ -42,7 +42,7 @@ services:
       - OUTLOOK_TENANT_ID=${OUTLOOK_TENANT_ID}
       - OUTLOOK_USER_EMAIL=${OUTLOOK_USER_EMAIL}
       - OPENROUTER_API_KEY=
-      - OPENROUTER_MODEL=openai/gpt-oss-120b:free
+      - OPENROUTER_MODEL=google/gemini-2.5-flash-lite
       - NODE_ENV=production
     volumes:
       # Persistent file storage

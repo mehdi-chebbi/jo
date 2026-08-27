@@ -34,10 +34,13 @@ const ApplicationForm = ({ offerId, offerMethod, onClose }: { offerId: number; o
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [customRequiredDocuments, setCustomRequiredDocuments] = useState<Array<{id: number; document_name: string; document_key: string; required: boolean}>>([]);
+  const [customRequiredDocuments, setCustomRequiredDocuments] = useState<Array<{id: number; document_name: string; document_name_en?: string | null; document_key: string; required: boolean}>>([]);
   const [otherDocuments, setOtherDocuments] = useState<Array<{name: string; file: File}>>([]);
   const [removedDefaultDocuments, setRemovedDefaultDocuments] = useState<Set<string>>(new Set());
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+
+  const getCustomDocumentName = (document: { document_name: string; document_name_en?: string | null }) =>
+    lang === 'en' ? (document.document_name_en || document.document_name) : document.document_name;
   
   // Fetch custom required documents for this offer
   useEffect(() => {
@@ -477,7 +480,7 @@ const ApplicationForm = ({ offerId, offerMethod, onClose }: { offerId: number; o
     // Validate custom required documents
     for (const customDoc of customRequiredDocuments) {
       if (customDoc.required && !formData[customDoc.document_key as keyof typeof formData]) {
-        setError(`${t('form.error.required')} ${customDoc.document_name}`);
+        setError(`${t('form.error.required')} ${getCustomDocumentName(customDoc)}`);
         return;
       }
     }
@@ -777,7 +780,7 @@ const ApplicationForm = ({ offerId, offerMethod, onClose }: { offerId: number; o
             {customRequiredDocuments.map((customDoc) => (
               <div key={customDoc.id}>
                 <label htmlFor={customDoc.document_key} className="block text-sm font-medium text-gray-700">
-                  {customDoc.document_name}
+                  {getCustomDocumentName(customDoc)}
                   {customDoc.required && <span className="text-red-500 ml-1">*</span>}
                   {!customDoc.required && <span className="text-gray-500 ml-1">({t('form.customDocuments.optional')})</span>}
                 </label>

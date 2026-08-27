@@ -206,7 +206,22 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
           message += '\n\nAll applications have been archived. You can still create new archives if needed.';
         }
         
-        await showAlert.success(t('rh.swal.archiveCompleteTitle'), message.replace(/\n/g, '<br>'));
+        await Swal.fire({
+          icon: 'success',
+          title: t('rh.swal.archiveCompleteTitle'),
+          html: escapeHtml(message).replace(/\n/g, '<br>'),
+          confirmButtonText: 'OK',
+          buttonsStyling: false,
+          customClass: {
+            confirmButton: 'swal2-confirm'
+          },
+          showClass: {
+            popup: 'animate__animated animate__fadeInDown'
+          },
+          hideClass: {
+            popup: 'animate__animated animate__fadeOutUp'
+          }
+        });
       } else {
         const errorData = await res.json();
         await showAlert.error(t('rh.swal.archiveFailedTitle'), `${t('rh.error.archiveApplications')}: ${errorData.error}`);

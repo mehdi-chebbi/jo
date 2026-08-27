@@ -7,6 +7,12 @@ import { generateReference } from '../../utils/referenceGenerator';
 import Swal from 'sweetalert2';
 
 type LanguageChoice = 'fr' | 'en' | 'both';
+type CustomDocumentDraft = {
+  name: string;
+  name_en: string;
+  key: string;
+  required: boolean;
+};
 
 const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer: Offer) => void; onCancel: () => void }) => {
   const { t, lang } = useI18n();
@@ -32,6 +38,7 @@ deadline: offer?.deadline ? offer.deadline.replace(' ', 'T').substring(0, 16) : 
   });
 
 const [newDocumentName, setNewDocumentName] = useState('');
+  const [newDocumentNameEn, setNewDocumentNameEn] = useState('');
   const [nextRefNumber, setNextRefNumber] = useState<string | null>(null);
 
   // Removed default documents state
@@ -43,9 +50,16 @@ const [notificationEmails, setNotificationEmails] = useState<string[]>(() => {
   } catch { return ['']; }
 });
 
-const [customDocuments, setCustomDocuments] = useState<Array<{ name: string; key: string; required: boolean }>>(() => {
+const [customDocuments, setCustomDocuments] = useState<CustomDocumentDraft[]>(() => {
   if (!offer?.custom_required_documents) return [];
-  return Array.isArray(offer.custom_required_documents) ? offer.custom_required_documents : [];
+  return Array.isArray(offer.custom_required_documents)
+    ? offer.custom_required_documents.map(doc => ({
+        name: doc.document_name,
+        name_en: doc.document_name_en || '',
+        key: doc.document_key,
+        required: doc.required
+      }))
+    : [];
 });
 
 const [removedDefaultDocuments, setRemovedDefaultDocuments] = useState<Set<string>>(() => {
@@ -218,18 +232,24 @@ useEffect(() => {
 
   // Custom documents functions
   const addCustomDocument = () => {
-    if (newDocumentName.trim()) {
+    const frenchOrPrimaryName = newDocumentName.trim();
+    const englishName = newDocumentNameEn.trim();
+    const hasRequiredNames = frenchOrPrimaryName && (languageChoice !== 'both' || englishName);
+
+    if (hasRequiredNames) {
       const key = newDocumentName.toLowerCase()
         .replace(/[^a-z0-9\s]/g, '')
         .replace(/\s+/g, '_');
 
       if (!customDocuments.find(doc => doc.key === key)) {
         setCustomDocuments([...customDocuments, {
-          name: newDocumentName.trim(),
+          name: frenchOrPrimaryName,
+          name_en: languageChoice === 'both' ? englishName : '',
           key: key,
           required: true
         }]);
         setNewDocumentName('');
+        setNewDocumentNameEn('');
       }
     }
   };
@@ -1074,7 +1094,12 @@ console.log('formData at submit:', formData);
                           <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
                           </svg>
-                          <span className="text-sm font-medium text-gray-700">{doc.name}</span>
+                          <span className="text-sm font-medium text-gray-700">
+                            {doc.name}
+                            {languageChoice === 'both' && doc.name_en && (
+                              <span className="text-gray-500 font-normal"> / {doc.name_en}</span>
+                            )}
+                          </span>
                           <span className={`text-xs px-2 py-1 rounded-full ${
                             doc.required
                               ? 'bg-red-100 text-red-700'
@@ -1110,19 +1135,43 @@ console.log('formData at submit:', formData);
               {/* Add New Document */}
               <div className="border-t pt-4">
                 <h4 className="text-sm font-medium text-gray-700 mb-3">{t('rh.form.customDocuments.addNew')}</h4>
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={newDocumentName}
-                    onChange={(e) => setNewDocumentName(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && addCustomDocument()}
-                    placeholder={t('rh.form.customDocuments.placeholder')}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  />
+                <div className={languageChoice === 'both' ? 'grid grid-cols-1 md:grid-cols-2 gap-3' : 'flex'}>
+                  <div className="flex-1">
+                    {languageChoice === 'both' && (
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        {t('rh.form.customDocuments.nameFr')}
+                      </label>
+                    )}
+                    <input
+                      type="text"
+                      value={newDocumentName}
+                      onChange={(e) => setNewDocumentName(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && addCustomDocument()}
+                      placeholder={languageChoice === 'both' ? t('rh.form.customDocuments.placeholderFr') : t('rh.form.customDocuments.placeholder')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                  </div>
+                  {languageChoice === 'both' && (
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        {t('rh.form.customDocuments.nameEn')}
+                      </label>
+                      <input
+                        type="text"
+                        value={newDocumentNameEn}
+                        onChange={(e) => setNewDocumentNameEn(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addCustomDocument()}
+                        placeholder={t('rh.form.customDocuments.placeholderEn')}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3">
                   <button
                     type="button"
                     onClick={addCustomDocument}
-                    disabled={!newDocumentName.trim()}
+                    disabled={!newDocumentName.trim() || (languageChoice === 'both' && !newDocumentNameEn.trim())}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                   >
                     {t('rh.form.customDocuments.addButton')}

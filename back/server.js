@@ -8,6 +8,7 @@ const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
 const pdfParse = require('pdf-parse');
+const { PDFDocument } = require('pdf-lib');
 
 // Microsoft Graph API dependencies
 const { ConfidentialClientApplication } = require('@azure/msal-node');
@@ -560,17 +561,39 @@ const tdrStorage = multer.diskStorage({
 
 // Multer setup for applicant files
 const applicantStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const fullName = req.body.full_name || 'unknown';
-    const sanitizedName = sanitizeFilename(fullName);
-    const applicantDir = path.join(applicantsDir, sanitizedName);
+  destination: async (req, file, cb) => {
+    try {
+      const offerId = req.body.offer_id;
+      if (!offerId) {
+        return cb(new Error('offer_id must be provided before applicant files'));
+      }
 
-    // Create applicant directory if it doesn't exist
-    if (!fs.existsSync(applicantDir)) {
-      fs.mkdirSync(applicantDir, { recursive: true });
+      // Reuse the same lookup for every document in this multipart request.
+      if (!req.offerReferencePromise) {
+        req.offerReferencePromise = pool.query(
+          'SELECT reference FROM offers WHERE id = ?',
+          [offerId]
+        ).then(([rows]) => {
+          if (rows.length === 0) throw new Error('Offer not found');
+          return rows[0].reference;
+        });
+      }
+
+      const offerReference = await req.offerReferencePromise;
+      const fullName = req.body.full_name || 'unknown';
+      const sanitizedReference = sanitizeFilename(offerReference);
+      const sanitizedName = sanitizeFilename(fullName);
+      const applicantDir = path.join(applicantsDir, sanitizedReference, sanitizedName);
+
+      // Create the offer and applicant directories if they don't exist.
+      if (!fs.existsSync(applicantDir)) {
+        fs.mkdirSync(applicantDir, { recursive: true });
+      }
+
+      cb(null, applicantDir);
+    } catch (err) {
+      cb(err);
     }
-
-    cb(null, applicantDir);
   },
   filename: (req, file, cb) => {
     const documentType = file.fieldname;
@@ -739,6 +762,7 @@ let pool;
         id INT AUTO_INCREMENT PRIMARY KEY,
         offer_id INT NOT NULL,
         document_name VARCHAR(255) NOT NULL,
+        document_name_en VARCHAR(255) NULL,
         document_key VARCHAR(255) NOT NULL,
         required BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1451,7 +1475,7 @@ app.get('/api/offers/:id', async (req, res) => {
 
     // Get custom required documents for the offer
     const [customDocs] = await pool.query(
-      `SELECT id, offer_id, document_name, document_key, required, created_at
+      `SELECT id, offer_id, document_name, document_name_en, document_key, required, created_at
        FROM custom_required_documents
        WHERE offer_id = ?`,
       [req.params.id]
@@ -1566,9 +1590,9 @@ app.post('/api/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fi
         if (Array.isArray(documents) && documents.length > 0) {
           for (const doc of documents) {
             await pool.query(
-              `INSERT INTO custom_required_documents (offer_id, document_name, document_key, required)
-               VALUES (?, ?, ?, ?)`,
-              [offerId, doc.name, doc.key, doc.required ? 1 : 0]
+              `INSERT INTO custom_required_documents (offer_id, document_name, document_name_en, document_key, required)
+               VALUES (?, ?, ?, ?, ?)`,
+              [offerId, doc.name, doc.name_en?.trim() || null, doc.key, doc.required ? 1 : 0]
             );
           }
         }
@@ -1590,7 +1614,7 @@ app.post('/api/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fi
 
     // Get custom required documents for the offer
     const [customDocs] = await pool.query(
-      `SELECT id, offer_id, document_name, document_key, required, created_at
+      `SELECT id, offer_id, document_name, document_name_en, document_key, required, created_at
        FROM custom_required_documents
        WHERE offer_id = ?`,
       [offerId]
@@ -1708,9 +1732,9 @@ app.put('/api/offers/:id', auth, requireRole('comite_ajout'), uploadTdrBilingual
         if (Array.isArray(documents) && documents.length > 0) {
           for (const doc of documents) {
             await pool.query(
-              `INSERT INTO custom_required_documents (offer_id, document_name, document_key, required)
-               VALUES (?, ?, ?, ?)`,
-              [id, doc.name, doc.key, doc.required ? 1 : 0]
+              `INSERT INTO custom_required_documents (offer_id, document_name, document_name_en, document_key, required)
+               VALUES (?, ?, ?, ?, ?)`,
+              [id, doc.name, doc.name_en?.trim() || null, doc.key, doc.required ? 1 : 0]
             );
           }
         }
@@ -1732,7 +1756,7 @@ app.put('/api/offers/:id', auth, requireRole('comite_ajout'), uploadTdrBilingual
 
     // Get custom required documents for the offer
     const [customDocs] = await pool.query(
-      `SELECT id, offer_id, document_name, document_key, required, created_at
+      `SELECT id, offer_id, document_name, document_name_en, document_key, required, created_at
        FROM custom_required_documents
        WHERE offer_id = ?`,
       [id]
@@ -2464,7 +2488,7 @@ app.post('/api/applications/archive/:offerId', auth, requireRole(['comite_ajout'
       : [offerId, now];
 
        const [offerCheck] = await pool.query(`
-      SELECT o.id, o.title, o.deadline
+      SELECT o.id, o.title, o.reference, o.deadline
       FROM offers o
       LEFT JOIN users u ON o.created_by = u.id
       WHERE o.id = ? AND deadline <= ?
@@ -2475,6 +2499,7 @@ app.post('/api/applications/archive/:offerId', auth, requireRole(['comite_ajout'
     }
 
     const offer = offerCheck[0];
+    const archiveReference = String(offer.reference || offer.id).replace(/[^a-zA-Z0-9_-]/g, '_');
 
     // Get all applications for this offer (both archived and non-archived)
     const [applications] = await pool.query(`
@@ -2497,8 +2522,8 @@ app.post('/api/applications/archive/:offerId', auth, requireRole(['comite_ajout'
     const zip = new JSZip();
 
     for (const app of applications) {
-      // Create folder structure: OfferTitle/CandidateName/
-      const folderName = `${offer.title.replace(/[^a-zA-Z0-9]/g, '_')}/${app.full_name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      // Create folder structure: OfferReference/CandidateName/
+      const folderName = `${archiveReference}/${app.full_name.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
       // Add each document if it exists
       const documents = [
@@ -2590,7 +2615,7 @@ Candidate Information:
 
     // Create a unique filename with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5); // Format: YYYY-MM-DDTHH-mm-ss
-    const archiveFilename = `archived_applications_${offer.title.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.zip`;
+    const archiveFilename = `archived_applications_${archiveReference}_${timestamp}.zip`;
     const archivePath = `./archives/${archiveFilename}`;
 
     // Ensure archives directory exists
@@ -3575,7 +3600,8 @@ app.get('/api/statistics', auth, requireRole(['admin', 'comite_ajout', 'comite_o
 
 // OpenRouter configuration
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash-lite';
+const MAX_AI_PAGES_PER_DOCUMENT = 5;
 
 // Helper: extract text from a PDF file
 async function extractPdfText(filePath) {
@@ -3588,6 +3614,40 @@ async function extractPdfText(filePath) {
     console.error('Error extracting PDF text:', filePath, err.message);
     return '';
   }
+}
+
+// Create an OpenRouter file input containing at most the first five pages.
+// The original applicant document is never modified.
+async function createLimitedPdfInput(filePath, documentName) {
+  if (!filePath || !fs.existsSync(filePath)) return null;
+
+  const originalBytes = await fs.promises.readFile(filePath);
+  const originalPdf = await PDFDocument.load(originalBytes);
+  const originalPageCount = originalPdf.getPageCount();
+  const analyzedPageCount = Math.min(MAX_AI_PAGES_PER_DOCUMENT, originalPageCount);
+
+  if (analyzedPageCount === 0) return null;
+
+  const limitedPdf = await PDFDocument.create();
+  const pageIndexes = Array.from({ length: analyzedPageCount }, (_, index) => index);
+  const copiedPages = await limitedPdf.copyPages(originalPdf, pageIndexes);
+  copiedPages.forEach(page => limitedPdf.addPage(page));
+
+  const limitedBytes = await limitedPdf.save();
+  const safeDocumentName = sanitizeFilename(documentName || path.basename(filePath)) || 'document';
+
+  return {
+    documentName,
+    originalPageCount,
+    analyzedPageCount,
+    content: {
+      type: 'file',
+      file: {
+        filename: `${safeDocumentName}-first-${analyzedPageCount}-pages.pdf`,
+        file_data: `data:application/pdf;base64,${Buffer.from(limitedBytes).toString('base64')}`
+      }
+    }
+  };
 }
 
 // Score a single candidate against an offer using OpenRouter
@@ -3622,10 +3682,12 @@ async function scoreCandidateWithAI(offerId, applicationId) {
     if (appRows.length === 0) return;
     const application = appRows[0];
 
-    // Collect all document texts
-    const docFields = [
+    // Collect every standard application document. Custom and other documents
+    // are appended below so the list remains dynamic.
+    const candidateDocuments = [
       { key: 'CV', path: application.cv_filepath },
       { key: 'Diploma', path: application.diplome_filepath },
+      { key: 'ID Card', path: application.id_card_filepath },
       { key: 'Cover Letter', path: application.cover_letter_filepath },
       { key: 'Declaration sur honneur', path: application.declaration_sur_honneur_filepath },
       { key: 'Fiche de referencement', path: application.fiche_de_referencement_filepath },
@@ -3651,32 +3713,35 @@ async function scoreCandidateWithAI(offerId, applicationId) {
       [applicationId]
     );
 
-    let documentsText = '';
-    for (const doc of docFields) {
-      if (doc.path) {
-        const text = await extractPdfText(doc.path);
-        if (text) {
-          documentsText += `\n--- ${doc.key} ---\n${text.substring(0, 10000)}\n`;
-        }
-      }
-    }
-
     for (const doc of customDocs) {
-      const text = await extractPdfText(doc.file_path);
-      if (text) {
-        documentsText += `\n--- ${doc.document_name} ---\n${text.substring(0, 10000)}\n`;
-      }
+      candidateDocuments.push({ key: doc.document_name, path: doc.file_path });
     }
 
     for (const doc of otherDocs) {
-      const text = await extractPdfText(doc.file_path);
-      if (text) {
-        documentsText += `\n--- ${doc.document_name} ---\n${text.substring(0, 10000)}\n`;
+      candidateDocuments.push({ key: doc.document_name, path: doc.file_path });
+    }
+
+    const preparedDocuments = [];
+    const skippedDocuments = [];
+
+    for (const doc of candidateDocuments) {
+      if (!doc.path) continue;
+
+      try {
+        const preparedDocument = await createLimitedPdfInput(doc.path, doc.key);
+        if (preparedDocument) {
+          preparedDocuments.push(preparedDocument);
+        } else {
+          skippedDocuments.push(`${doc.key} (empty or missing)`);
+        }
+      } catch (err) {
+        skippedDocuments.push(`${doc.key} (could not be opened)`);
+        console.error(`Could not prepare ${doc.key} for AI scoring:`, err.message);
       }
     }
 
-    if (!documentsText.trim()) {
-      console.warn(`No document text extracted for application ${applicationId}`);
+    if (preparedDocuments.length === 0) {
+      console.warn(`No applicant documents could be prepared for application ${applicationId}`);
       return;
     }
 
@@ -3696,7 +3761,11 @@ Country: ${application.applicant_country}
 Email: ${application.email}
 
 ## CANDIDATE'S DOCUMENTS:
-${documentsText}
+The applicant's PDF documents are attached to this message. For each document, only the first ${MAX_AI_PAGES_PER_DOCUMENT} pages (or the complete document when shorter) are provided.
+
+Documents provided:
+${preparedDocuments.map(doc => `- ${doc.documentName}: ${doc.analyzedPageCount} of ${doc.originalPageCount} page(s) analyzed`).join('\n')}
+${skippedDocuments.length > 0 ? `\nDocuments unavailable for AI analysis:\n${skippedDocuments.map(name => `- ${name}`).join('\n')}` : ''}
 
 ---
 
@@ -3716,7 +3785,17 @@ You MUST respond with EXACTLY this JSON format and nothing else:
       'https://openrouter.ai/api/v1/chat/completions',
       {
         model: OPENROUTER_MODEL,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            ...preparedDocuments.map(doc => doc.content)
+          ]
+        }],
+        plugins: [{
+          id: 'file-parser',
+          pdf: { engine: 'native' }
+        }],
         temperature: 0.3,
         max_tokens: 500,
       },
