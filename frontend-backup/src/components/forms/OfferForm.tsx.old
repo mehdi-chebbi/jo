@@ -1,0 +1,1268 @@
+import { useState, useRef, useEffect } from 'react';
+import type { Offer, Department, Project, OfferType, OfferMethod } from '../../types';
+import { API_BASE_URL } from '../../config';
+import { useI18n } from '../../i18n';
+import { getOfferTypeOptions, getOfferMethodOptions, getRequiredDocumentsForMethod } from '../../utils/offerType';
+import { generateReference } from '../../utils/referenceGenerator';
+import Swal from 'sweetalert2';
+
+type LanguageChoice = 'fr' | 'en' | 'both';
+
+const OfferForm = ({ offer, onSave, onCancel }: { offer?: Offer; onSave: (offer: Offer) => void; onCancel: () => void }) => {
+  const { t, lang } = useI18n();
+
+  // Language selection step
+  const [languageChoice, setLanguageChoice] = useState<LanguageChoice | null>(null);
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
+
+  // Form data for French (primary)
+  const [formData, setFormData] = useState({
+    type: offer?.type || 'travaux',
+    method: offer?.method || 'appel_d_offres_international',
+    title: offer?.title || '',
+    title_en: offer?.title_en || '',
+    description: offer?.description || '',
+    description_en: offer?.description_en || '',
+    country: offer?.country || '',
+    reference: offer?.reference || '',
+deadline: offer?.deadline ? offer.deadline.replace(' ', 'T').substring(0, 16) : '',
+    tdr: null as File | null,
+    tdr_en: null as File | null,
+    language: offer?.language || 'fr',
+  });
+
+const [newDocumentName, setNewDocumentName] = useState('');
+  const [nextRefNumber, setNextRefNumber] = useState<string | null>(null);
+
+  // Removed default documents state
+const [notificationEmails, setNotificationEmails] = useState<string[]>(() => {
+  if (!offer?.notification_emails) return [''];
+  try {
+    const emails = JSON.parse(offer.notification_emails);
+    return Array.isArray(emails) && emails.length > 0 ? emails : [''];
+  } catch { return ['']; }
+});
+
+const [customDocuments, setCustomDocuments] = useState<Array<{ name: string; key: string; required: boolean }>>(() => {
+  if (!offer?.custom_required_documents) return [];
+  return Array.isArray(offer.custom_required_documents) ? offer.custom_required_documents : [];
+});
+
+const [removedDefaultDocuments, setRemovedDefaultDocuments] = useState<Set<string>>(() => {
+  if (!offer?.removed_default_documents) return new Set();
+  return Array.isArray(offer.removed_default_documents) ? new Set(offer.removed_default_documents) : new Set();
+});
+  // Departments and projects state
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Country dropdown state
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
+  const [filteredCountries, setFilteredCountries] = useState<string[]>([]);
+  const [highlightedCountryIndex, setHighlightedCountryIndex] = useState(-1);
+  const countryDropdownRef = useRef<HTMLDivElement>(null);
+  const countryInputRef = useRef<HTMLInputElement>(null);
+
+  // List of countries
+const countries = ["International",  "Algerie",  "Angola",  "Benin",  "Botswana",
+    "Burkina Faso",
+  "Burundi",  "Cap-Vert",  "Cameroun",  "Republique centrafricaine",  "Tchad",
+  "Comores",  "Republique democratique du Congo",
+  "Republique du Congo",  "Cote d'Ivoire",  "Djibouti",
+  "Egypte",  "Guinee equatoriale",  "Erythree",
+  "Eswatini",  "Ethiopie",  "Gabon",  "Gambie",  "Ghana",  "Guinee",  "Guinee-Bissau",
+  "Kenya",  "Lesotho",  "Liberia",  "Lybie",
+  "Madagascar",  "Malawi",  "Mali",  "Mauritanie",  "Maurice",
+  "Maroc",  "Mozambique",  "Namibie",  "Niger",
+  "Nigeria",  "Rwanda",  "Sao Tome-et-Principe",
+  "Senegal",  "Seychelles",  "Sierra Leone",  "Somalie",  "Afrique du Sud",  "Soudan", 
+   "Soudan du Sud",  "Tanzanie",  "Togo",  "Tunisie",
+  "Ouganda",  "Zambie",  "Zimbabwe"
+];
+
+
+useEffect(() => {
+  if (offer && offer.language) {
+    setLanguageChoice(offer.language as LanguageChoice);
+    setFormData(prev => ({ ...prev, language: offer.language }));
+  }
+}, [offer]);
+  // Load departments and projects
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const token = localStorage.getItem('token');
+
+        // Load departments
+        const deptResponse = await fetch(`${API_BASE_URL}/departments`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (deptResponse.ok) {
+          const deptData = await deptResponse.json();
+          setDepartments(deptData);
+        }
+
+        // Load projects
+        const projResponse = await fetch(`${API_BASE_URL}/projects`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (projResponse.ok) {
+          const projData = await projResponse.json();
+          setProjects(projData);
+        }
+
+        // Load next reference number
+        const refResponse = await fetch(`${API_BASE_URL}/offers/next-reference-number`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (refResponse.ok) {
+          const refData = await refResponse.json();
+          setNextRefNumber(refData.number);
+        }
+      } catch (error) {
+        console.error('Error loading departments and projects:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // Handle generate reference
+  const handleGenerateReference = () => {
+    if (!nextRefNumber) return;
+
+    const selectedProject = projects.find(p => p.id.toString() === selectedProjectId);
+    const projectName = selectedProject ? selectedProject.name : '';
+    const title = formData.title;
+
+    if (!formData.method || !projectName || !title) {
+      Swal.fire({
+        icon: 'warning',
+        title: t('rh.form.generateReferenceTitle'),
+        text: t('rh.form.generateReferenceText'),
+        confirmButtonColor: '#16a34a',
+      });
+      return;
+    }
+
+    const reference = generateReference({
+      method: formData.method,
+      projectName,
+      title,
+      offerNumber: nextRefNumber,
+    });
+
+    setFormData(prev => ({ ...prev, reference }));
+  };
+
+  // Handle department selection
+  const handleDepartmentChange = (departmentId: string) => {
+    setSelectedDepartment(departmentId);
+    setSelectedProjectId(''); // Reset selected project when department changes
+    if (departmentId) {
+      const deptProjects = projects.filter(p => p.department_id.toString() === departmentId);
+      setFilteredProjects(deptProjects);
+    } else {
+      setFilteredProjects([]);
+    }
+  };
+
+  // Set initial department and project when editing
+  useEffect(() => {
+    if (offer && offer.project_id && departments.length > 0 && projects.length > 0) {
+      const project = projects.find(p => p.id === offer.project_id);
+      if (project) {
+        setSelectedDepartment(project.department_id.toString());
+        setSelectedProjectId(offer.project_id.toString());
+        const deptProjects = projects.filter(p => p.department_id === project.department_id);
+        setFilteredProjects(deptProjects);
+      }
+    }
+  }, [offer, departments, projects]);
+
+  // Handle email field changes
+  const handleEmailChange = (index: number, value: string) => {
+    const newEmails = [...notificationEmails];
+    newEmails[index] = value;
+    setNotificationEmails(newEmails);
+  };
+
+  // Add new email field
+  const addEmailField = () => {
+    if (notificationEmails.length < 10) {
+      setNotificationEmails([...notificationEmails, '']);
+    }
+  };
+
+  // Remove email field
+  const removeEmailField = (index: number) => {
+    if (notificationEmails.length > 1) {
+      const newEmails = notificationEmails.filter((_, i) => i !== index);
+      setNotificationEmails(newEmails);
+    }
+  };
+
+  // Email validation function
+  const isValidEmail = (email: string) => {
+    if (!email.trim()) return true; // Empty emails are allowed (will be filtered out)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Custom documents functions
+  const addCustomDocument = () => {
+    if (newDocumentName.trim()) {
+      const key = newDocumentName.toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, '_');
+
+      if (!customDocuments.find(doc => doc.key === key)) {
+        setCustomDocuments([...customDocuments, {
+          name: newDocumentName.trim(),
+          key: key,
+          required: true
+        }]);
+        setNewDocumentName('');
+      }
+    }
+  };
+
+  const removeCustomDocument = (key: string) => {
+    setCustomDocuments(customDocuments.filter(doc => doc.key !== key));
+  };
+
+  const toggleDocumentRequired = (key: string) => {
+    setCustomDocuments(customDocuments.map(doc =>
+      doc.key === key ? { ...doc, required: !doc.required } : doc
+    ));
+  };
+
+  // Get default required documents for the offer type (method-based)
+  const getDefaultRequiredDocuments = () => {
+    const allDocuments = getRequiredDocumentsForMethod(formData.method);
+    // Filter out removed default documents
+    return allDocuments.filter(doc => !removedDefaultDocuments.has(doc.key));
+  };
+
+  // Function to remove a default document
+  const removeDefaultDocument = (documentKey: string) => {
+    setRemovedDefaultDocuments(prev => new Set([...prev, documentKey]));
+  };
+
+  // Function to restore a default document
+  const restoreDefaultDocument = (documentKey: string) => {
+    setRemovedDefaultDocuments(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(documentKey);
+      return newSet;
+    });
+  };
+
+  // Get all default documents (including removed ones) for display
+  const getAllDefaultDocuments = () => {
+    return getRequiredDocumentsForMethod(formData.method);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Handle country input changes
+  const handleCountryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFormData(prev => ({ ...prev, country: value }));
+
+    if (value) {
+      const filtered = countries.filter(country =>
+        country.toLowerCase().includes(value.toLowerCase())
+      );
+      setFilteredCountries(filtered.slice(0, 6)); // Limit to 6 options
+      setShowCountryDropdown(true);
+    } else {
+      // Show first countries when input is empty
+      setFilteredCountries(countries.slice(0, 6));
+      setShowCountryDropdown(true);
+    }
+    setHighlightedCountryIndex(-1);
+  };
+
+  // Handle country key navigation
+  const handleCountryKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showCountryDropdown) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedCountryIndex(prev =>
+          prev < filteredCountries.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedCountryIndex(prev => prev > 0 ? prev - 1 : -1);
+        break;
+      case 'Enter':
+        if (highlightedCountryIndex >= 0) {
+          e.preventDefault();
+          selectCountry(filteredCountries[highlightedCountryIndex]);
+        }
+        break;
+      case 'Escape':
+        setShowCountryDropdown(false);
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Select a country from of dropdown
+  const selectCountry = (country: string) => {
+    setFormData(prev => ({ ...prev, country }));
+    setShowCountryDropdown(false);
+    setHighlightedCountryIndex(-1);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        countryDropdownRef.current &&
+        !countryDropdownRef.current.contains(event.target as Node) &&
+        countryInputRef.current !== event.target
+      ) {
+        setShowCountryDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, isEnglish = false) => {
+    if (e.target.files && e.target.files[0]) {
+      if (isEnglish) {
+        setFormData(prev => ({ ...prev, tdr_en: e.target.files![0] }));
+      } else {
+        setFormData(prev => ({ ...prev, tdr: e.target.files![0] }));
+      }
+    }
+  };
+
+  // Handle language choice selection
+  const handleLanguageChoiceSelect = (choice: LanguageChoice) => {
+    setLanguageChoice(choice);
+    // Update the language field in formData
+    setFormData(prev => ({
+      ...prev,
+      language: choice === 'both' ? 'both' : choice
+    }));
+  };
+
+  // Handle "Next" button click (for bilingual offers)
+  const handleNext = () => {
+    setCurrentStep(2);
+  };
+
+  // Handle "Back" button click (for bilingual offers)
+  const handleBack = () => {
+    setCurrentStep(1);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+console.log('selectedDepartment:', selectedDepartment);
+console.log('selectedProjectId:', selectedProjectId);
+console.log('languageChoice:', languageChoice);
+console.log('currentStep:', currentStep);
+    // Validate that a project is selected
+    if (!selectedDepartment) {
+        console.log('RETURNING: no department');
+
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Erreur',
+        text: t('rh.form.validation.selectDepartment'),
+        confirmButtonText: 'OK'
+      });
+      return;
+    }
+
+    // Find selected project using selected project ID
+    const selectedProject = filteredProjects.find(p => p.id.toString() === selectedProjectId);
+    if (!selectedProject) {
+        console.log('RETURNING: no project');
+
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Erreur',
+        text: t('rh.form.validation.selectProject'),
+        confirmButtonText: 'OK'
+      });
+      return;
+    }
+
+    // For bilingual offers, validate step 2 before final submission
+    if (languageChoice === 'both' && currentStep === 1) {
+        console.log('RETURNING: bilingual step 1');
+
+      // Move to step 2
+      handleNext();
+      return;
+    }
+
+    // Validate emails before submission
+    const validEmails = notificationEmails.filter(email => email.trim() !== '');
+    const invalidEmails = validEmails.filter(email => !isValidEmail(email));
+
+    if (invalidEmails.length > 0) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Erreur',
+        text: t('rh.form.validation.validEmails'),
+        confirmButtonText: 'OK'
+      });
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    const formDataToSend = new FormData();
+
+console.log('formData.language:', formData.language);
+console.log('languageChoice:', languageChoice);
+    Object.entries(formData).forEach(([key, value]) => {
+  if (key !== 'tdr' && key !== 'tdr_en' && value != null) {
+    formDataToSend.append(key, String(value));
+  }
+});
+console.log('formData at submit:', formData);
+    if (formData.tdr) formDataToSend.append('tdr', formData.tdr);
+    if (formData.tdr_en) formDataToSend.append('tdr_en', formData.tdr_en);
+
+    // Add project_id
+    formDataToSend.append('project_id', selectedProject.id.toString());
+
+    // Add notification emails (only valid ones)
+    formDataToSend.append('notification_emails', JSON.stringify(validEmails));
+
+    // Add custom required documents
+    formDataToSend.append('custom_documents', JSON.stringify(customDocuments));
+
+    // Add removed default documents
+    formDataToSend.append('removed_default_documents', JSON.stringify(Array.from(removedDefaultDocuments)));
+
+    const url = offer ? `${API_BASE_URL}/offers/${offer.id}` : `${API_BASE_URL}/offers`;
+    const method = offer ? 'PUT' : 'POST';
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { Authorization: `Bearer ${token}` },
+        body: formDataToSend,
+      });
+
+    if (response.ok) {
+  const result = await response.json();
+  onSave(result);
+}else {
+        const errorData = await response.json();
+        await Swal.fire({
+          icon: 'error',
+          title: 'Erreur',
+          text: `${t('rh.form.error.saveOffer')}: ${errorData.error || 'Unknown error'} ❌`,
+          confirmButtonText: 'OK'
+        });
+      }
+    } catch (err) {
+      console.error('Save error:', err);
+      await Swal.fire({
+        icon: 'error',
+        title: 'Erreur',
+        text: t('rh.form.error.network'),
+        confirmButtonText: 'OK'
+      });
+    }
+  };
+
+  // Language selection screen (Step 0)
+  if (!languageChoice && !offer) {
+    return (
+      <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6">
+          Selectionner le language de l'offre
+        </h2>
+        <div className="space-y-4">
+          <button
+            type="button"
+            onClick={() => handleLanguageChoiceSelect('fr')}
+            className="w-full p-6 border-2 border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all duration-200 text-left"
+          >
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+  <svg
+    viewBox="0 0 36 36"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+    role="img"
+    className="w-10 h-10"
+    preserveAspectRatio="xMidYMid meet"
+  >
+    <path fill="#ED2939" d="M36 27a4 4 0 0 1-4 4h-8V5h8a4 4 0 0 1 4 4v18z" />
+    <path fill="#002495" d="M4 5a4 4 0 0 0-4 4v18a4 4 0 0 0 4 4h8V5H4z" />
+    <path fill="#EEE" d="M12 5h12v26H12z" />
+  </svg>
+</div>
+
+              <div>
+                <h3 className="font-semibold text-gray-800">Français uniquement</h3>
+                <p className="text-sm text-gray-500">L'offre ne sera affichée que sur la page francais</p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleLanguageChoiceSelect('en')}
+            className="w-full p-6 border-2 border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all duration-200 text-left"
+          >
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+<svg
+  viewBox="0 0 36 36"
+  xmlns="http://www.w3.org/2000/svg"
+  aria-hidden="true"
+  role="img"
+  className="w-10 h-10"
+  preserveAspectRatio="xMidYMid meet"
+>
+  <path fill="#00247D" d="M0 9.059V13h5.628zM4.664 31H13v-5.837zM23 25.164V31h8.335zM0 23v3.941L5.63 23zM31.337 5H23v5.837zM36 26.942V23h-5.631zM36 13V9.059L30.371 13zM13 5H4.664L13 10.837z" />
+  <path fill="#CF1B2B" d="M25.14 23l9.712 6.801a3.977 3.977 0 0 0 .99-1.749L28.627 23H25.14zM13 23h-2.141l-9.711 6.8c.521.53 1.189.909 1.938 1.085L13 23.943V23zm10-10h2.141l9.711-6.8a3.988 3.988 0 0 0-1.937-1.085L23 12.057V13zm-12.141 0L1.148 6.2a3.994 3.994 0 0 0-.991 1.749L7.372 13h3.487z" />
+  <path fill="#EEE" d="M36 21H21v10h2v-5.836L31.335 31H32a3.99 3.99 0 0 0 2.852-1.199L25.14 23h3.487l7.215 5.052c.093-.337.158-.686.158-1.052v-.058L30.369 23H36v-2zM0 21v2h5.63L0 26.941V27c0 1.091.439 2.078 1.148 2.8l9.711-6.8H13v.943l-9.914 6.941c.294.07.598.116.914.116h.664L13 25.163V31h2V21H0zM36 9a3.983 3.983 0 0 0-1.148-2.8L25.141 13H23v-.943l9.915-6.942A4.001 4.001 0 0 0 32 5h-.663L23 10.837V5h-2v10h15v-2h-5.629L36 9.059V9zM13 5v5.837L4.664 5H4a3.985 3.985 0 0 0-2.852 1.2l9.711 6.8H7.372L.157 7.949A3.968 3.968 0 0 0 0 9v.059L5.628 13H0v2h15V5h-2z" />
+  <path fill="#CF1B2B" d="M21 15V5h-6v10H0v6h15v10h6V21h15v-6z" />
+</svg>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-800">Anglais uniquement</h3>
+                <p className="text-sm text-gray-500">L'offre ne sera affichée que sur la page anglais</p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleLanguageChoiceSelect('both')}
+            className="w-full p-6 border-2 border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all duration-200 text-left"
+          >
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg p-1">
+  <svg
+    viewBox="0 0 238.125 158.75"
+    xmlns="http://www.w3.org/2000/svg"
+    className="w-full h-full"
+  >
+    <defs>
+      {/* Rounded corners for the whole flag */}
+      <clipPath id="rounded">
+        <rect x="0" y="0" width="238.125" height="158.75" rx="18" ry="18" />
+      </clipPath>
+
+      {/* FR triangle */}
+      <clipPath id="triangle">
+        <path d="M0,600 900,0 0,0Z" />
+      </clipPath>
+
+      {/* UK diagonal cross clip */}
+      <clipPath id="crossClip">
+        <path d="M30,15H60V30ZM30,15V30H0ZM30,15H0V0ZM30,15V0H60Z" />
+      </clipPath>
+    </defs>
+
+    <g clipPath="url(#rounded)">
+      {/* UK background */}
+      <rect width="238.125" height="158.75" fill="#00247D" />
+
+      {/* White diagonals */}
+      <path
+        d="M0,0 238.125,158.75M238.125,0 0,158.75"
+        stroke="#EEE"
+        strokeWidth="31.75"
+      />
+
+      {/* Red diagonals */}
+      <path
+        d="M0,0 60,30M60,0 0,30"
+        transform="matrix(3.96875,0,0,5.29167,0,0)"
+        clipPath="url(#crossClip)"
+        stroke="#CF1B2B"
+        strokeWidth="4.62"
+      />
+
+      {/* White cross */}
+      <path
+        d="M119.06,0V158.75M0,79.38H238.125"
+        stroke="#EEE"
+        strokeWidth="52.92"
+      />
+
+      {/* Red cross */}
+      <path
+        d="M119.06,0V158.75M0,79.38H238.125"
+        stroke="#CF1B2B"
+        strokeWidth="31.75"
+      />
+
+      {/* FR triangle */}
+      <g transform="scale(0.2647,0.2646)" clipPath="url(#triangle)">
+        <rect width="900" height="600" fill="#ED2939" />
+        <rect width="600" height="600" fill="#EEE" />
+        <rect width="300" height="600" fill="#002495" />
+      </g>
+    </g>
+  </svg>
+</div>
+
+              <div>
+                <h3 className="font-semibold text-gray-800">Bilingual / Bilingue</h3>
+                <p className="text-sm text-gray-500">L'offre sera affichée sur les deux pages /fr et /en</p>
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Step indicator for bilingual offers
+  const showStepIndicator = languageChoice === 'both';
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+      {/* Step Indicator */}
+      {showStepIndicator && (
+        <div className="mb-6">
+          <div className="flex items-center justify-center space-x-4">
+            <div className={`flex items-center space-x-2 ${currentStep === 1 ? 'text-green-600' : 'text-gray-400'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 1 ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>
+                1
+              </div>
+              <span className="font-medium">Français</span>
+            </div>
+            <div className="w-12 h-1 bg-gray-200">
+              <div className={`h-full bg-green-600 transition-all duration-300 ${currentStep === 2 ? 'w-full' : 'w-0'}`}></div>
+            </div>
+            <div className={`flex items-center space-x-2 ${currentStep === 2 ? 'text-green-600' : 'text-gray-400'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 2 ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>
+                2
+              </div>
+              <span className="font-medium">English</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Language Selection Header (for editing) - read-only display */}
+      {offer && (
+        <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <div className="flex items-center space-x-2 text-sm text-gray-600">
+            <span>Offer language:</span>
+            <span className="font-semibold">
+              {languageChoice === 'fr' ? '🇫🇷 Français uniquement' : languageChoice === 'en' ? '🇬🇧 English only' : '🌐 Bilingual / Bilingue'}
+            </span>
+            <span className="text-xs text-gray-400 ml-2">(Cannot be changed)</span>
+          </div>
+        </div>
+      )}
+
+      {/* Type and Method (only in step 1 or for non-bilingual) */}
+      {(!showStepIndicator || currentStep === 1) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label htmlFor="type" className="block text-sm font-semibold text-gray-800 mb-2">{t('rh.form.type')}</label>
+            <select
+              id="type"
+              name="type"
+              className="mt-1 block w-full border-2 border-gray-200 focus:ring-2 focus:ring-green-500 focus:border-green-500 rounded-lg px-4 py-3 text-gray-700 bg-white transition-all duration-200 hover:border-gray-300 shadow-sm"
+              value={formData.type}
+              onChange={handleChange}
+              required
+            >
+              {getOfferTypeOptions(lang).map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="method" className="block text-sm font-semibold text-gray-800 mb-2">{t('rh.form.method')}</label>
+            <select
+              id="method"
+              name="method"
+              className="mt-1 block w-full border-2 border-gray-200 focus:ring-2 focus:ring-green-500 focus:border-green-500 rounded-lg px-4 py-3 text-gray-700 bg-white transition-all duration-200 hover:border-gray-300 shadow-sm"
+              value={formData.method}
+              onChange={handleChange}
+              required
+            >
+              {getOfferMethodOptions(lang).map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Title and Description based on language and step */}
+      {!showStepIndicator || currentStep === 1 ? (
+        <>
+          {/* French Title */}
+          <div className="space-y-2">
+            <label htmlFor="title" className="block text-sm font-semibold text-gray-800 mb-2">
+              {languageChoice === 'en' ? 'Title (English)' : t('rh.form.title')}
+            </label>
+            <input
+              type="text"
+              id="title"
+              name="title"
+              className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+              value={formData.title}
+              onChange={handleChange}
+              placeholder={languageChoice === 'en' ? 'Enter title in English' : 'Entrez le titre en français'}
+              required
+            />
+          </div>
+
+          {/* French Description */}
+          <div className="space-y-2">
+            <label htmlFor="description" className="block text-sm font-semibold text-gray-800 mb-2">
+              {languageChoice === 'en' ? 'Description (English)' : t('rh.form.description')}
+            </label>
+            <textarea
+              id="description"
+              name="description"
+              rows={4}
+              className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300 resize-vertical"
+              value={formData.description}
+              onChange={handleChange}
+              placeholder={languageChoice === 'en' ? 'Enter description in English' : 'Entrez la description en français'}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          {/* English Title */}
+          <div className="space-y-2">
+            <label htmlFor="title_en" className="block text-sm font-semibold text-gray-800 mb-2">
+              Title (English)
+            </label>
+            <input
+              type="text"
+              id="title_en"
+              name="title_en"
+              className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+              value={formData.title_en}
+              onChange={handleChange}
+              placeholder="Enter title in English"
+              required
+            />
+          </div>
+
+          {/* English Description */}
+          <div className="space-y-2">
+            <label htmlFor="description_en" className="block text-sm font-semibold text-gray-800 mb-2">
+              Description (English)
+            </label>
+            <textarea
+              id="description_en"
+              name="description_en"
+              rows={4}
+              className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300 resize-vertical"
+              value={formData.description_en}
+              onChange={handleChange}
+              placeholder="Enter description in English"
+            />
+          </div>
+        </>
+      )}
+
+      {/* Country, Department, Project, Deadline, Reference, TDR, Custom Documents, Notification Emails (only in step 1 or for non-bilingual) */}
+      {(!showStepIndicator || currentStep === 1) && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2 relative" ref={countryDropdownRef}>
+              <label htmlFor="country" className="block text-sm font-semibold text-gray-800 mb-2">{t('rh.form.country')}</label>
+              <input
+                ref={countryInputRef}
+                type="text"
+                id="country"
+                name="country"
+                className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+                value={formData.country}
+                onChange={handleCountryChange}
+                onKeyDown={handleCountryKeyDown}
+                onFocus={() => {
+                  // Show first countries when focused and empty
+                  if (!formData.country) {
+                    setFilteredCountries(countries.slice(0, 6));
+                    setShowCountryDropdown(true);
+                  } else {
+                    // Filter countries if there's already a value
+                    const filtered = countries.filter(country =>
+                      country.toLowerCase().includes(formData.country.toLowerCase())
+                    );
+                    setFilteredCountries(filtered.slice(0, 6));
+                    setShowCountryDropdown(true);
+                  }
+                }}
+                placeholder={t('rh.form.countryPlaceholder')}
+                required
+              />
+
+              {showCountryDropdown && filteredCountries.length > 0 && (
+                <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-60 overflow-auto">
+                  {filteredCountries.map((country, index) => (
+                    <div
+                      key={country}
+                      className={`px-4 py-2 cursor-pointer ${
+                        index === highlightedCountryIndex
+                          ? 'bg-green-500 text-white'
+                          : 'hover:bg-gray-100'
+                      }`}
+                      onClick={() => selectCountry(country)}
+                    >
+                      {country}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="department"
+                className="block text-sm font-semibold text-gray-800 mb-2"
+              >
+                {t('rh.form.departmentRequired')}
+              </label>
+              <select
+                id="department"
+                name="department"
+                className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+                value={selectedDepartment}
+                onChange={(e) => handleDepartmentChange(e.target.value)}
+                required
+                disabled={isLoading || departments.length === 0}
+              >
+                <option value="">
+                  {isLoading ? t('rh.form.loading') : departments.length === 0 ? t('rh.form.noDepartmentsAvailable') : t('rh.form.selectDepartment')}
+                </option>
+                {departments.map(dept => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </option>
+                ))}
+              </select>
+              {departments.length === 0 && !isLoading && (
+                <p className="text-sm text-gray-500">
+                  {t('rh.form.noDepartmentsHelp')}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="project"
+                className="block text-sm font-semibold text-gray-800 mb-2"
+              >
+                {t('rh.form.projectRequired')}
+              </label>
+              <select
+                id="project"
+                name="project"
+                className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+                value={selectedProjectId}
+                onChange={(e) => {
+                  // Update selected project state
+                  setSelectedProjectId(e.target.value);
+                }}
+                required
+                disabled={!selectedDepartment || filteredProjects.length === 0}
+              >
+                <option value="">
+                  {!selectedDepartment ? t('rh.form.selectDepartmentFirst') : filteredProjects.length === 0 ? t('rh.form.noProjectsAvailable') : t('rh.form.selectProject')}
+                </option>
+                {filteredProjects.map(project => (
+                  <option key={project.id} value={project.id.toString()}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              {selectedDepartment && filteredProjects.length === 0 && (
+                <p className="text-sm text-gray-500">
+                  {t('rh.form.noProjectsHelp')}
+                </p>
+              )}
+            </div>
+          </div>
+
+<div className="space-y-2">
+  <label htmlFor="deadline" className="block text-sm font-semibold text-gray-800 mb-2">
+    {t('rh.form.deadline')}
+  </label>
+  
+  <div className="grid grid-cols-2 gap-4">
+    {/* Date Picker */}
+    <div>
+      <input
+        type="date"
+        id="deadline-date"
+        className="block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+        value={formData.deadline ? formData.deadline.split('T')[0] : ''}
+        onChange={(e) => {
+          const date = e.target.value;
+          const time = formData.deadline ? formData.deadline.split('T')[1] : '00:00';
+          setFormData(prev => ({ ...prev, deadline: `${date}T${time}` }));
+        }}
+        required
+      />
+      <p className="text-xs text-gray-500 mt-1">Date</p>
+    </div>
+
+    {/* Time Picker with Dropdowns */}
+    <div className="grid grid-cols-2 gap-2">
+      {/* Hours */}
+      <div>
+        <select
+          className="block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+          value={formData.deadline ? formData.deadline.split('T')[1]?.split(':')[0] || '00' : '00'}
+          onChange={(e) => {
+            const date = formData.deadline ? formData.deadline.split('T')[0] : new Date().toISOString().split('T')[0];
+            const minutes = formData.deadline ? formData.deadline.split('T')[1]?.split(':')[1] || '00' : '00';
+            setFormData(prev => ({ ...prev, deadline: `${date}T${e.target.value}:${minutes}` }));
+          }}
+          required
+        >
+          {Array.from({ length: 24 }, (_, i) => {
+            const hour = i.toString().padStart(2, '0');
+            return <option key={hour} value={hour}>{hour}h</option>;
+          })}
+        </select>
+        <p className="text-xs text-gray-500 mt-1">Heure</p>
+      </div>
+
+      {/* Minutes */}
+      <div>
+        <select
+          className="block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+          value={formData.deadline ? formData.deadline.split('T')[1]?.split(':')[1] || '00' : '00'}
+          onChange={(e) => {
+            const date = formData.deadline ? formData.deadline.split('T')[0] : new Date().toISOString().split('T')[0];
+            const hours = formData.deadline ? formData.deadline.split('T')[1]?.split(':')[0] || '00' : '00';
+            setFormData(prev => ({ ...prev, deadline: `${date}T${hours}:${e.target.value}` }));
+          }}
+          required
+        >
+          {Array.from({ length: 60 }, (_, i) => {
+            const minute = i.toString().padStart(2, '0');
+            return <option key={minute} value={minute}>{minute}</option>;
+          })}
+        </select>
+        <p className="text-xs text-gray-500 mt-1">Min</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+          <div className="space-y-2">
+            <label htmlFor="reference" className="block text-sm font-semibold text-gray-800 mb-2">{t('rh.form.reference')}</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                id="reference"
+                name="reference"
+                placeholder="AO/OSS/project/title-abbrev/DDMMYYYY-XX"
+                className="flex-1 mt-1 block border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+                value={formData.reference}
+                onChange={handleChange}
+                required
+              />
+              <button
+                type="button"
+                onClick={handleGenerateReference}
+                disabled={!nextRefNumber}
+                className="mt-1 inline-flex items-center px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm font-medium"
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                {t('rh.form.generateReference')}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="tdr" className="block text-sm font-semibold text-gray-800 mb-2">
+              {languageChoice === 'en' ? 'TDR Document (English)' : t('rh.form.tdrDocument')}
+            </label>
+            <input
+              type="file"
+              id="tdr"
+              name="tdr"
+              accept=".pdf"
+              className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+              onChange={(e) => handleFileChange(e, false)}
+            />
+            <p className="text-sm text-gray-500">{t('rh.form.tdrOptional')}</p>
+          </div>
+
+          {/* Custom Required Documents Section */}
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">{t('rh.form.customDocuments.title')}</h3>
+
+              {/* Default Required Documents */}
+              <div className="mb-6">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">{t('rh.form.customDocuments.defaultDocuments')}</h4>
+                <div className="bg-white rounded-lg p-4 border border-gray-200">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {getAllDefaultDocuments().map(doc => {
+                      const isRemoved = removedDefaultDocuments.has(doc.key);
+                      return (
+                        <div key={doc.key} className={`flex items-center justify-between p-2 rounded-lg border ${isRemoved ? 'bg-red-50 border-red-200 opacity-60' : 'bg-green-50 border-green-200'}`}>
+                          <div className="flex items-center space-x-2">
+                            {isRemoved ? (
+                              <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                            <span className={`text-sm ${isRemoved ? 'text-gray-500 line-through' : 'text-gray-700'}`}>{doc.name}</span>
+                            <span className="text-xs text-gray-500">({t('rh.form.customDocuments.required')})</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => isRemoved ? restoreDefaultDocument(doc.key) : removeDefaultDocument(doc.key)}
+                            className={`text-xs px-2 py-1 rounded transition-colors ${
+                              isRemoved
+                                ? 'bg-green-100 hover:bg-green-200 text-green-700'
+                                : 'bg-red-100 hover:bg-red-200 text-red-700'
+                            }`}
+                          >
+                            {isRemoved ? 'Restaurer' : 'Retirer'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {removedDefaultDocuments.size > 0 && (
+                    <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-xs text-yellow-800">
+                        <strong>Note:</strong> {removedDefaultDocuments.size} document(s) supprimé(s). Les candidat(e)s ne seront pas tenu(e)s de téléverser ces documents.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Custom Added Documents */}
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">{t('rh.form.customDocuments.additionalDocuments')}</h4>
+                {customDocuments.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic">{t('rh.form.customDocuments.noAdditional')}</p>
+                ) : (
+                  <div className="space-y-2">
+                    {customDocuments.map(doc => (
+                      <div key={doc.key} className="flex items-center justify-between bg-white rounded-lg p-3 border border-gray-200">
+                        <div className="flex items-center space-x-3">
+                          <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-sm font-medium text-gray-700">{doc.name}</span>
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            doc.required
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {doc.required ? t('rh.form.customDocuments.required') : t('rh.form.customDocuments.optional')}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleDocumentRequired(doc.key)}
+                            className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded transition-colors"
+                          >
+                            {doc.required ? t('rh.form.customDocuments.makeOptional') : t('rh.form.customDocuments.makeRequired')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeCustomDocument(doc.key)}
+                            className="text-red-500 hover:text-red-700 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Add New Document */}
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">{t('rh.form.customDocuments.addNew')}</h4>
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={newDocumentName}
+                    onChange={(e) => setNewDocumentName(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addCustomDocument()}
+                    placeholder={t('rh.form.customDocuments.placeholder')}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={addCustomDocument}
+                    disabled={!newDocumentName.trim()}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {t('rh.form.customDocuments.addButton')}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">{t('rh.form.customDocuments.help')}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Notification Emails Section */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-semibold text-gray-800">{t('rh.form.notificationEmails')}</label>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-500">
+                  {t('rh.form.emailsCount').replace('{count}', notificationEmails.filter(email => email.trim() !== '').length.toString())}
+                </span>
+                {notificationEmails.length < 10 && (
+                  <button
+                    type="button"
+                    onClick={addEmailField}
+                    className="inline-flex items-center px-3 py-1 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    {t('rh.form.addEmail')}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {notificationEmails.map((email, index) => (
+                <div key={index} className="flex items-center space-x-3">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => handleEmailChange(index, e.target.value)}
+                    placeholder={t('rh.form.emailPlaceholder').replace('{index}', (index + 1).toString())}
+                    className="flex-1 border-2 border-gray-200 rounded-lg shadow-sm py-2 px-3 text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+                  />
+                  {notificationEmails.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeEmailField(index)}
+                      className="inline-flex items-center px-2 py-1 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {notificationEmails.length === 10 && (
+              <p className="text-sm text-orange-600 bg-orange-50 p-2 rounded-lg">
+                {t('rh.form.maxEmailsReached')}
+              </p>
+            )}
+
+            <p className="text-sm text-gray-500">
+              {t('rh.form.emailsDescription')}
+            </p>
+          </div>
+        </>
+      )}
+
+      {/* English TDR (only in step 2 for bilingual offers) */}
+      {showStepIndicator && currentStep === 2 && (
+        <div className="space-y-2">
+          <label htmlFor="tdr_en" className="block text-sm font-semibold text-gray-800 mb-2">TDR Document (English)</label>
+          <input
+            type="file"
+            id="tdr_en"
+            name="tdr_en"
+            accept=".pdf"
+            className="mt-1 block w-full border-2 border-gray-200 rounded-lg shadow-sm py-3 px-4 text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 hover:border-gray-300"
+            onChange={(e) => handleFileChange(e, true)}
+          />
+          <p className="text-sm text-gray-500">Upload the English version of the TDR document</p>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          {t('rh.form.cancel')}
+        </button>
+
+        {/* Back button for bilingual offers */}
+        {showStepIndicator && currentStep === 2 && (
+          <button
+            type="button"
+            onClick={handleBack}
+            className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Back to French
+          </button>
+        )}
+
+        {/* Submit/Next button */}
+        {showStepIndicator && currentStep === 1 ? (
+          <button
+            type="submit"
+            className="px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Next to English →
+          </button>
+        ) : (
+          <button
+            type="submit"
+            className="px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
+          >
+            {offer ? t('rh.form.updateOffer') : t('rh.form.createOffer')}
+          </button>
+        )}
+      </div>
+    </form>
+  );
+};
+
+export default OfferForm;

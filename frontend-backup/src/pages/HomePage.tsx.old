@@ -1,0 +1,469 @@
+import { useState, useEffect, useMemo } from 'react';
+import OfferCard from '../components/OfferCard';
+import type { Offer } from '../types';
+import { useI18n } from '../i18n';
+import { getOfferTypeName, getOfferMethodName, getCountryName, translations } from '../utils/translations';
+
+const ITEMS_PER_PAGE = 9;
+
+// All 54 African countries (keys from translations, excluding "International")
+const AFRICAN_COUNTRIES = Object.keys(translations.countries).filter(key => key !== 'International');
+
+const HomePage = ({ offers }: { offers: Offer[] }) => {
+  const { t, lang } = useI18n();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filters, setFilters] = useState({
+    search: '',
+    method: '',
+    scope: '', // '' = all, 'national', 'international'
+    country: '',
+    status: ''
+  });
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters.search, filters.method, filters.scope, filters.country, filters.status]);
+
+  // Filter offers based on current language and filters
+  const filteredOffers = useMemo(() => {
+    return offers.filter(offer => {
+      const matchesLanguage = lang === 'fr'
+        ? (offer.language === 'fr' || offer.language === 'both')
+        : (offer.language === 'en' || offer.language === 'both');
+
+      const matchesMethod = filters.method ? offer.method === filters.method : true;
+
+      // Scope + Country filtering
+      let matchesScope = true;
+      if (filters.scope === 'national') {
+        // National: offer country is NOT "International"
+        if (offer.country === 'International') {
+          matchesScope = false;
+        }
+        // If a specific country is also selected, filter by it
+        if (matchesScope && filters.country) {
+          matchesScope = offer.country === filters.country;
+        }
+      } else if (filters.scope === 'international') {
+        // International: offer country IS "International"
+        matchesScope = offer.country === 'International';
+      }
+      // If scope is '' (all), no filtering on scope
+
+      // Status filter logic
+      let matchesStatus = true;
+      if (filters.status === 'actif') {
+        matchesStatus = offer.status === 'actif';
+      } else if (filters.status === 'sous_evaluation') {
+        matchesStatus = offer.status === 'sous_evaluation';
+      } else if (filters.status === 'resultat') {
+        matchesStatus = offer.status === 'resultat' || offer.status === 'infructueux';
+      }
+
+      return matchesLanguage && matchesMethod && matchesScope && matchesStatus;
+    });
+  }, [offers, filters.method, filters.scope, filters.country, filters.status, lang]);
+
+  // Get the display version of offers based on language
+  const displayOffers = useMemo(() => {
+    return filteredOffers.map(offer => {
+      if (lang === 'en' && offer.language === 'both') {
+        return {
+          ...offer,
+          title: offer.title_en || offer.title,
+          description: offer.description_en || offer.description,
+        };
+      }
+      return offer;
+    });
+  }, [filteredOffers, lang]);
+
+  // Apply search filter on the display offers + sort by status
+  const finalFilteredOffers = useMemo(() => {
+    const STATUS_ORDER: Record<string, number> = {
+      actif: 0,
+      sous_evaluation: 1,
+      resultat: 2,
+      infructueux: 2, // same level as resultat
+    };
+
+    return displayOffers
+      .filter(offer => {
+        const matchesSearch = offer.title.toLowerCase().includes(filters.search.toLowerCase()) ||
+                             offer.description.toLowerCase().includes(filters.search.toLowerCase());
+        return matchesSearch;
+      })
+      .sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
+  }, [displayOffers, filters.search]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(finalFilteredOffers.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedOffers = finalFilteredOffers.slice(startIndex, endIndex);
+
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxPagesToShow = 5;
+
+    if (totalPages <= maxPagesToShow) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) pages.push(i);
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) pages.push(i);
+      } else {
+        pages.push(1);
+        pages.push('...');
+        pages.push(currentPage - 1);
+        pages.push(currentPage);
+        pages.push(currentPage + 1);
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+
+    return pages;
+  };
+
+  const uniqueMethods = Array.from(new Set(offers.map(offer => offer.method)));
+
+  // Status options - "All" plus the 3 existing values
+  const statusOptions = [
+    { value: '', label: t('filters.status.all') },
+    { value: 'actif', label: t('filters.status.actif') },
+    { value: 'sous_evaluation', label: t('filters.status.sousEvaluation') },
+    { value: 'resultat', label: t('filters.status.resultat') }
+  ];
+
+  // Scope options
+  const scopeOptions = [
+    { value: '', label: t('filters.scope.all') },
+    { value: 'national', label: t('filters.scope.national') },
+    { value: 'international', label: t('filters.scope.international') }
+  ];
+
+  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFilters(prev => {
+      const updated = { ...prev, [name]: value };
+      // If scope changes, reset country
+      if (name === 'scope') {
+        updated.country = '';
+      }
+      return updated;
+    });
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      search: '',
+      method: '',
+      scope: '',
+      country: '',
+      status: ''
+    });
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="bg-gradient-to-b from-green-50 to-blue-50">
+
+      <div id="opportunities" className="py-20 bg-gradient-to-b from-green-50 to-blue-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl sm:text-5xl font-black text-gray-900 mb-4">
+              {t('home.section.title')}
+            </h2>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">{t('home.section.subtitle')}</p>
+            <div className="w-24 h-1 bg-gradient-to-r from-green-500 to-blue-500 mx-auto rounded-full mt-6"></div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 sm:mb-0">{t('filters.title')}</h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+              <div>
+                <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">{t('filters.search')}</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="search"
+                    name="search"
+                    placeholder={t('filters.search.placeholder')}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    value={filters.search}
+                    onChange={handleFilterChange}
+                  />
+                  <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="method" className="block text-sm font-medium text-gray-700 mb-1">{t('home.category')}</label>
+                <select
+                  id="method"
+                  name="method"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  value={filters.method}
+                  onChange={handleFilterChange}
+                >
+                  <option value="">{t('home.allcategory')}</option>
+                  {uniqueMethods.map(method => {
+                    const methodName = getOfferMethodName(method, lang);
+                    return (
+                      <option key={method} value={method}>
+                        {methodName}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="scope" className="block text-sm font-medium text-gray-700 mb-1">{t('filters.scope')}</label>
+                <select
+                  id="scope"
+                  name="scope"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  value={filters.scope}
+                  onChange={handleFilterChange}
+                >
+                  {scopeOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {filters.scope === 'national' && (
+                <div>
+                  <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">{t('home.country')}</label>
+                  <select
+                    id="country"
+                    name="country"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    value={filters.country}
+                    onChange={handleFilterChange}
+                  >
+                    <option value="">{t('home.allcountries')}</option>
+                    {AFRICAN_COUNTRIES.map(country => (
+                      <option key={country} value={country}>
+                        {getCountryName(country, lang)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">{t('filters.status')}</label>
+                <select
+                  id="status"
+                  name="status"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  value={filters.status}
+                  onChange={handleFilterChange}
+                >
+                  {statusOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              {filters.search && (
+                <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                  {t('filters.search')}: {filters.search}
+                  <button
+                    onClick={() => setFilters(prev => ({ ...prev, search: '' }))}
+                    className="ml-2 text-blue-600 hover:text-blue-900"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              {filters.method && (
+                <span className="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+                  {t('home.category')}: {getOfferMethodName(filters.method, lang)}
+                  <button
+                    onClick={() => setFilters(prev => ({ ...prev, method: '' }))}
+                    className="ml-2 text-purple-600 hover:text-purple-900"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              {filters.scope && (
+                <span className="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                  {t('filters.scope')}: {scopeOptions.find(opt => opt.value === filters.scope)?.label}
+                  <button
+                    onClick={() => setFilters(prev => ({ ...prev, scope: '', country: '' }))}
+                    className="ml-2 text-green-600 hover:text-green-900"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              {filters.scope === 'national' && filters.country && (
+                <span className="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                  {t('home.country')}: {getCountryName(filters.country, lang)}
+                  <button
+                    onClick={() => setFilters(prev => ({ ...prev, country: '' }))}
+                    className="ml-2 text-green-600 hover:text-green-900"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              {filters.status && (
+                <span className="inline-flex items-center px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">
+                  {t('filters.status')}: {statusOptions.find(opt => opt.value === filters.status)?.label}
+                  <button
+                    onClick={() => setFilters(prev => ({ ...prev, status: '' }))}
+                    className="ml-2 text-indigo-600 hover:text-indigo-900"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+            </div>
+
+            {(filters.search || filters.method || filters.scope || filters.country || filters.status) && (
+              <button
+                onClick={clearFilters}
+                className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {t('app.delete_filters')}
+              </button>
+            )}
+          </div>
+
+          {finalFilteredOffers.length === 0 ? (
+            <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-green-100">
+              <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-green-100 to-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-10 h-10 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">{t('app.no_offers_found')}</h3>
+              <p className="text-gray-600 mb-6">{t('app.change_filter')}</p>
+              <button
+                onClick={clearFilters}
+                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white font-medium rounded-lg hover:from-green-700 hover:to-green-800 transition-colors"
+              >
+                {t('app.delete_filters')}
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
+                {paginatedOffers.map(offer => (
+                  <OfferCard key={offer.id} offer={offer} />
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                  {/* Previous Button */}
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className={`inline-flex items-center px-4 py-2 rounded-lg font-medium transition-colors ${
+                      currentPage === 1
+                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-white text-gray-700 hover:bg-green-50 hover:text-green-700 border border-gray-300'
+                    }`}
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Previous
+                  </button>
+
+                  {/* Page Numbers */}
+                  <div className="flex items-center gap-2">
+                    {getPageNumbers().map((page, index) => (
+                      page === '...' ? (
+                        <span key={`ellipsis-${index}`} className="px-2 text-gray-500">...</span>
+                      ) : (
+                        <button
+                          key={page}
+                          onClick={() => handlePageChange(page as number)}
+                          className={`min-w-[40px] h-10 rounded-lg font-medium transition-colors ${
+                            currentPage === page
+                              ? 'bg-gradient-to-r from-green-600 to-green-700 text-white'
+                              : 'bg-white text-gray-700 hover:bg-green-50 hover:text-green-700 border border-gray-300'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      )
+                    ))}
+                  </div>
+
+                  {/* Next Button */}
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className={`inline-flex items-center px-4 py-2 rounded-lg font-medium transition-colors ${
+                      currentPage === totalPages
+                        ? 'bg-gray-200 text-gray-400 cursor-not-disabled'
+                        : 'bg-white text-gray-700 hover:bg-green-50 hover:text-green-700 border border-gray-300'
+                    }`}
+                  >
+                    Next
+                    <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default HomePage;
