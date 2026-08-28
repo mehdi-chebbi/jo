@@ -611,10 +611,34 @@ const uploadTdrBilingual = multer({
     fileSize: 10 * 1024 * 1024 // 10MB limit
   }
 });
-const uploadApplicant = multer({ storage: applicantStorage });
+const MAX_APPLICANT_PDF_SIZE = 15 * 1024 * 1024;
+const applicantUploadOptions = {
+  storage: applicantStorage,
+  limits: {
+    fileSize: MAX_APPLICANT_PDF_SIZE
+  }
+};
+
+const uploadApplicant = multer(applicantUploadOptions);
 
 // Dynamic multer configuration that accepts any field
-const uploadApplicantDynamic = multer({ storage: applicantStorage });
+const uploadApplicantDynamic = multer(applicantUploadOptions);
+
+const handleApplicantUpload = (req, res, next) => {
+  uploadApplicantDynamic.any()(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        code: 'FILE_TOO_LARGE',
+        error: 'Each PDF must be 15 MB or smaller.'
+      });
+    }
+
+    console.error('Applicant file upload error:', err);
+    return res.status(400).json({ error: 'Failed to upload applicant documents.' });
+  });
+};
 const DB_CONFIG = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
@@ -2090,7 +2114,7 @@ app.get('/api/offers/:id/tdr', async (req, res) => {
 
 // ───── Applications ─────
 // ───── Applications ─────
-app.post('/api/apply', uploadApplicantDynamic.any(), async (req, res) => {
+app.post('/api/apply', handleApplicantUpload, async (req, res) => {
   try {
     console.log('Received application submission:', {
       body: req.body,

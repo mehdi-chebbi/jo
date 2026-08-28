@@ -8,6 +8,7 @@ import { API_BASE_URL } from '../config';
 import { useI18n } from '../i18n';
 import { showAlert } from '../utils/sweetalertConfig';
 import { getCountryName, getOfferTypeName } from '../utils/translations';
+import { extractOfferId } from '../utils/offerSlug';
 // Function to format time remaining
 const formatTimeRemaining = (milliseconds: number, t: (key: string) => string): string => {
   if (milliseconds <= 0) return t('offer.countdown.expired');
@@ -30,7 +31,8 @@ const formatTimeRemaining = (milliseconds: number, t: (key: string) => string): 
 
 const OfferDetailPage = () => {
   const { t, currentLangPrefix, lang } = useI18n();
-  const { id } = useParams<{ id: string }>();
+  const { id: offerPath } = useParams<{ id: string }>();
+  const id = extractOfferId(offerPath);
   const [offer, setOffer] = useState<Offer | null>(null);
   const [loading, setLoading] = useState(true);
   const [showApplicationForm, setShowApplicationForm] = useState(false);

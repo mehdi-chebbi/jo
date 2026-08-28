@@ -150,7 +150,7 @@ const en: Translations = {
   'form.diploma': 'Upload Diploma (PDF)',
   'form.idCard': 'Upload ID Card (PDF)',
   'form.coverLetter': 'Upload Cover Letter (PDF)',
-  'form.additionalDocs': 'Additional Required Documents',
+  'form.additionalDocs': 'Procedure Required Documents',
   'form.declarationHonneur': 'Declaration sur l\'Honneur (PDF)',
   'form.ficheReferencement': 'Fiche de Referencement (PDF)',
   'form.extraitRegistre': 'Extrait Registre National (PDF)',
@@ -165,11 +165,12 @@ const en: Translations = {
   'form.error.forOfferType': 'PDF for this offer type',
   'form.error.submitFailed': 'Failed to submit application',
   'form.error.applicationFailed': 'Application failed',
+  'form.error.fileTooLarge': 'Each PDF must be 15 MB or smaller.',
   'form.error.deadlinePassed': 'Application deadline has passed',
   'form.error.offerExpired': 'This offer is no longer accepting applications',
   
   // Application form custom documents translations
-  'form.customDocuments.title': 'Additional Required Documents',
+  'form.customDocuments.title': 'Offer-Specific Documents',
   'form.customDocuments.optional': 'Optional',
   
   // Application form other documents translations
@@ -757,7 +758,7 @@ const fr: Translations = {
   'form.diploma': 'Télécharger Diplôme (PDF)',
   'form.idCard': 'Télécharger Carte d\'identité (PDF)',
   'form.coverLetter': 'Télécharger Lettre de motivation (PDF)',
-  'form.additionalDocs': 'Documents supplémentaires requis',
+  'form.additionalDocs': 'Documents requis pour la procédure',
   'form.declarationHonneur': 'Déclaration sur l\'honneur (PDF)',
   'form.ficheReferencement': 'Fiche de référencement (PDF)',
   'form.extraitRegistre': 'Extrait registre national (PDF)',
@@ -772,11 +773,12 @@ const fr: Translations = {
   'form.error.forOfferType': 'PDF pour ce type d\'offre',
   'form.error.submitFailed': 'Échec de l\'envoi de la candidature',
   'form.error.applicationFailed': 'Candidature échouée',
+  'form.error.fileTooLarge': 'Chaque fichier PDF doit avoir une taille maximale de 15 Mo.',
   'form.error.deadlinePassed': 'La date limite de candidature est passée',
   'form.error.offerExpired': 'Cette offre n\'accepte plus de candidatures',
   
   // Application form custom documents translations
-  'form.customDocuments.title': 'Documents Requis Supplémentaires',
+  'form.customDocuments.title': 'Documents spécifiques à l\'offre',
   'form.customDocuments.optional': 'Optionnel',
   
   // Application form other documents translations

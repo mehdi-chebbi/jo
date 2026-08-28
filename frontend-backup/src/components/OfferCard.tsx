@@ -5,6 +5,7 @@ import { API_BASE_URL } from '../config';
 import { useI18n } from '../i18n';
 import { showAlert } from '../utils/sweetalertConfig';
 import { getCountryName } from '../utils/translations';
+import { createOfferSlug } from '../utils/offerSlug';
 interface User {
   id: number;
   name: string;
@@ -95,7 +96,7 @@ const OfferCard = ({ offer }: { offer: Offer }) => {
         )}
         {/* Learn More button - ALWAYS VISIBLE */}
         <Link
-          to={`${currentLangPrefix}/offer/${offer.id}`}
+          to={`${currentLangPrefix}/offer/${createOfferSlug(offer.title, offer.id)}`}
           className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-center block"
         >
           {t('offer.learnMore')}

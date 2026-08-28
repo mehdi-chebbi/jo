@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 import { useI18n } from '../i18n';
-import { getRequiredDocumentsForMethod, methodRequiresAdditionalDocs } from '../utils/offerType';
+import { getRequiredDocumentsForMethod } from '../utils/offerType';
 
 // Map document keys to i18n translation keys
 const docLabelKeys: { [key: string]: string } = {
@@ -12,6 +12,8 @@ const docLabelKeys: { [key: string]: string } = {
   'liste_references': 'form.listeReferences',
   'offre_financiere': 'form.offreFinanciere'
 };
+
+const MAX_PDF_SIZE_BYTES = 15 * 1024 * 1024;
 
 const ApplicationForm = ({ offerId, offerMethod, onClose }: { offerId: number; offerMethod: string; onClose: () => void }) => {
   const [formData, setFormData] = useState({
@@ -413,18 +415,41 @@ const ApplicationForm = ({ offerId, offerMethod, onClose }: { offerId: number; o
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name } = e.target;
     if (e.target.files && e.target.files[0]) {
+      if (e.target.files[0].size > MAX_PDF_SIZE_BYTES) {
+        setError(t('form.error.fileTooLarge'));
+        setFormData(prev => ({ ...prev, [name]: null }));
+        e.target.value = '';
+        return;
+      }
+
+      setError('');
       setFormData(prev => ({ ...prev, [name]: e.target.files![0] }));
     }
   };
   
   // Handle custom document file changes
-  const handleCustomDocumentChange = (documentKey: string, file: File) => {
+  const handleCustomDocumentChange = (documentKey: string, file: File): boolean => {
+    if (file.size > MAX_PDF_SIZE_BYTES) {
+      setError(t('form.error.fileTooLarge'));
+      setFormData(prev => ({ ...prev, [documentKey]: null }));
+      return false;
+    }
+
+    setError('');
     setFormData(prev => ({ ...prev, [documentKey]: file }));
+    return true;
   };
   
   // Handle other documents
-  const handleOtherDocumentAdd = (name: string, file: File) => {
+  const handleOtherDocumentAdd = (name: string, file: File): boolean => {
+    if (file.size > MAX_PDF_SIZE_BYTES) {
+      setError(t('form.error.fileTooLarge'));
+      return false;
+    }
+
+    setError('');
     setOtherDocuments(prev => [...prev, { name, file }]);
+    return true;
   };
   
   const handleOtherDocumentRemove = (index: number) => {
@@ -484,6 +509,15 @@ const ApplicationForm = ({ offerId, offerMethod, onClose }: { offerId: number; o
         return;
       }
     }
+
+    const selectedFiles = Object.values(formData)
+      .filter((value): value is File => value instanceof File)
+      .concat(otherDocuments.map(document => document.file));
+
+    if (selectedFiles.some(file => file.size > MAX_PDF_SIZE_BYTES)) {
+      setError(t('form.error.fileTooLarge'));
+      return;
+    }
     
     setIsSubmitting(true);
     setError('');
@@ -534,8 +568,12 @@ const ApplicationForm = ({ offerId, offerMethod, onClose }: { offerId: number; o
           onClose();
         }, 2000);
       } else {
-        const data = await response.json();
-        setError(data.error || t('form.error.applicationFailed'));
+        const data = await response.json().catch(() => null);
+        if (response.status === 413 || data?.code === 'FILE_TOO_LARGE') {
+          setError(t('form.error.fileTooLarge'));
+        } else {
+          setError(data?.error || t('form.error.applicationFailed'));
+        }
       }
     } catch (err) {
       setError(t('form.error.submitFailed'));
@@ -559,8 +597,8 @@ const ApplicationForm = ({ offerId, offerMethod, onClose }: { offerId: number; o
     );
   }
   
-  const requireAdditionalFields = methodRequiresAdditionalDocs(offerMethod);
   const additionalDocs = getRequiredDocumentsForMethod(offerMethod).filter(doc => !['cv', 'diplome', 'id_card', 'cover_letter'].includes(doc.key));
+  const visibleAdditionalDocs = additionalDocs.filter(doc => !removedDefaultDocuments.has(doc.key));
   
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -746,12 +784,12 @@ const ApplicationForm = ({ offerId, offerMethod, onClose }: { offerId: number; o
         </div>
       )}
       
-      {requireAdditionalFields && additionalDocs.length > 0 && (
+      {visibleAdditionalDocs.length > 0 && (
         <>
           <div className="pt-4 border-t border-gray-200">
             <h3 className="text-lg font-medium text-gray-900 mb-4">{t('form.additionalDocs')}</h3>
             <div className="space-y-4">
-              {additionalDocs.map(doc => !removedDefaultDocuments.has(doc.key) && (
+              {visibleAdditionalDocs.map(doc => (
                 <div key={doc.key}>
                   <label htmlFor={doc.key} className="block text-sm font-medium text-gray-700">
                     {t(docLabelKeys[doc.key] || `form.doc.${doc.key}`)}
@@ -791,7 +829,9 @@ const ApplicationForm = ({ offerId, offerMethod, onClose }: { offerId: number; o
                   accept=".pdf"
                   onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
-                      handleCustomDocumentChange(customDoc.document_key, e.target.files[0]);
+                      if (!handleCustomDocumentChange(customDoc.document_key, e.target.files[0])) {
+                        e.target.value = '';
+                      }
                     }
                   }}
                   className="mt-1 block w-full file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
@@ -851,6 +891,7 @@ const ApplicationForm = ({ offerId, offerMethod, onClose }: { offerId: number; o
                 if (e.target.files && e.target.files[0]) {
                   const fileName = e.target.files[0].name.replace('.pdf', '');
                   handleOtherDocumentAdd(fileName, e.target.files[0]);
+                  e.target.value = '';
                 }
               }}
               className="hidden"
