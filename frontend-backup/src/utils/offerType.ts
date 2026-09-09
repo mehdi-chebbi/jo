@@ -54,6 +54,21 @@ const baseDocuments: DocumentRequirement[] = [
   { key: 'cover_letter', name: 'Lettre de motivation', required: true }
 ];
 
+// Stored in removed_default_documents for newly created custom-only offers.
+// Keeping the complete list makes the behavior stable if the offer method is edited later.
+export const ALL_PREDEFINED_DOCUMENT_KEYS = [
+  'cv',
+  'diplome',
+  'id_card',
+  'cover_letter',
+  'declaration_sur_honneur',
+  'fiche_de_referencement',
+  'extrait_registre',
+  'note_methodologique',
+  'liste_references',
+  'offre_financiere'
+] as const;
+
 const additionalDocsByMethod: { [method: string]: DocumentRequirement[] } = {
   // Appel d'Offres International - full procurement docs
   'appel_d_offres_international': [

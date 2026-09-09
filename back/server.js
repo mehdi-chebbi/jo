@@ -612,6 +612,18 @@ const uploadTdrBilingual = multer({
   }
 });
 const MAX_APPLICANT_PDF_SIZE = 15 * 1024 * 1024;
+const ALL_PREDEFINED_DOCUMENT_KEYS = [
+  'cv',
+  'diplome',
+  'id_card',
+  'cover_letter',
+  'declaration_sur_honneur',
+  'fiche_de_referencement',
+  'extrait_registre',
+  'note_methodologique',
+  'liste_references',
+  'offre_financiere'
+];
 const applicantUploadOptions = {
   storage: applicantStorage,
   limits: {
@@ -1532,7 +1544,7 @@ app.get('/api/offers/:id', async (req, res) => {
 
 app.post('/api/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fields([{ name: 'tdr', maxCount: 1 }, { name: 'tdr_en', maxCount: 1 }]), async (req, res) => {
   try {
-    const { type, method, title, description, country, project_id, reference, deadline, notification_emails, custom_documents, removed_default_documents, language, title_en, description_en } = req.body;
+    const { type, method, title, description, country, project_id, reference, deadline, notification_emails, custom_documents, language, title_en, description_en } = req.body;
     const tdrFrFile = req.files['tdr'] ? req.files['tdr'][0] : null;
     const tdrEnFile = req.files['tdr_en'] ? req.files['tdr_en'][0] : null;
 
@@ -1581,19 +1593,9 @@ app.post('/api/offers', auth, requireRole('comite_ajout'), uploadTdrBilingual.fi
       }
     }
 
-    // Parse removed default documents
-    let removedDefaultDocs = [];
-    if (removed_default_documents) {
-      try {
-        removedDefaultDocs = JSON.parse(removed_default_documents);
-        if (!Array.isArray(removedDefaultDocs)) {
-          removedDefaultDocs = [];
-        }
-      } catch (e) {
-        console.error('Error parsing removed default documents:', e);
-        removedDefaultDocs = [];
-      }
-    }
+    // Newly created offers use only documents configured through the custom-document mechanism.
+    // Existing offers keep their stored configuration through the separate PUT route.
+    const removedDefaultDocs = [...ALL_PREDEFINED_DOCUMENT_KEYS];
 
     const [result] = await pool.query(
       `INSERT INTO offers SET
@@ -2142,7 +2144,7 @@ app.post('/api/apply', handleApplicantUpload, async (req, res) => {
     };
 
     // Verify offer exists and get status
-    const [offerRows] = await pool.query('SELECT id, title, type, created_by, deadline, status, removed_default_documents FROM offers WHERE id = ?', [offer_id]);
+    const [offerRows] = await pool.query('SELECT id, title, type, method, created_by, deadline, status, removed_default_documents FROM offers WHERE id = ?', [offer_id]);
     if (offerRows.length === 0) return res.status(404).json({ error: 'Offer not found' });
     const offer = offerRows[0];
 
@@ -2219,6 +2221,25 @@ app.post('/api/apply', handleApplicantUpload, async (req, res) => {
       }
       if (file.mimetype !== 'application/pdf') {
         return res.status(400).json({ error: `${fieldName} must be a PDF file` });
+      }
+    }
+
+    // Custom documents are the authoritative requirements for newly created offers.
+    // This also protects existing offers that already use required custom documents.
+    const [requiredCustomDocs] = await pool.query(
+      `SELECT document_key, document_name
+       FROM custom_required_documents
+       WHERE offer_id = ? AND required = 1`,
+      [offer_id]
+    );
+
+    for (const customDoc of requiredCustomDocs) {
+      const file = getFileByFieldname(customDoc.document_key);
+      if (!file) {
+        return res.status(400).json({ error: `${customDoc.document_name} file is required` });
+      }
+      if (file.mimetype !== 'application/pdf') {
+        return res.status(400).json({ error: `${customDoc.document_name} must be a PDF file` });
       }
     }
 

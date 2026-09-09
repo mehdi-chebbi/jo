@@ -46,6 +46,7 @@ export type Offer = {
   tdr_url: string | null;
   notification_emails?: string | string[];
   custom_required_documents?: CustomRequiredDocument[];
+  removed_default_documents?: string[];
   status?: 'actif' | 'sous_evaluation' | 'resultat' | 'infructueux';
   winner_name?: string | null;
   days_since_expiry?: number;

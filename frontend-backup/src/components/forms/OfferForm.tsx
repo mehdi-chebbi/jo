@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import type { Offer, Department, Project, OfferType, OfferMethod } from '../../types';
 import { API_BASE_URL } from '../../config';
 import { useI18n } from '../../i18n';
-import { getOfferTypeOptions, getOfferMethodOptions, getRequiredDocumentsForMethod } from '../../utils/offerType';
+import { ALL_PREDEFINED_DOCUMENT_KEYS, getOfferTypeOptions, getOfferMethodOptions, getRequiredDocumentsForMethod } from '../../utils/offerType';
 import { generateReference } from '../../utils/referenceGenerator';
 import Swal from 'sweetalert2';
 
@@ -63,9 +63,11 @@ const [customDocuments, setCustomDocuments] = useState<CustomDocumentDraft[]>(()
 });
 
 const [removedDefaultDocuments, setRemovedDefaultDocuments] = useState<Set<string>>(() => {
-  if (!offer?.removed_default_documents) return new Set();
+  if (!offer) return new Set(ALL_PREDEFINED_DOCUMENT_KEYS);
+  if (!offer.removed_default_documents) return new Set();
   return Array.isArray(offer.removed_default_documents) ? new Set(offer.removed_default_documents) : new Set();
 });
+const isCustomOnlyOffer = ALL_PREDEFINED_DOCUMENT_KEYS.every(key => removedDefaultDocuments.has(key));
   // Departments and projects state
   const [departments, setDepartments] = useState<Department[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -1034,8 +1036,8 @@ console.log('formData at submit:', formData);
             <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">{t('rh.form.customDocuments.title')}</h3>
 
-              {/* Default Required Documents */}
-              <div className="mb-6">
+              {/* Existing offers retain their legacy predefined-document controls. */}
+              {offer && !isCustomOnlyOffer && <div className="mb-6">
                 <h4 className="text-sm font-medium text-gray-700 mb-3">{t('rh.form.customDocuments.defaultDocuments')}</h4>
                 <div className="bg-white rounded-lg p-4 border border-gray-200">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1079,7 +1081,7 @@ console.log('formData at submit:', formData);
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
 
               {/* Custom Added Documents */}
               <div className="mb-4">

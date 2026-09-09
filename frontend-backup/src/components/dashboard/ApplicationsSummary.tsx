@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { showAlert } from '../../utils/sweetalertConfig';
 import Swal from 'sweetalert2';
-import { getOfferTypeOnlyInfo } from '../../utils/offerType';
+import { getOfferTypeOnlyInfo, getRequiredDocumentsForMethod } from '../../utils/offerType';
 import { getOfferTypeName, getOfferMethodName, getCountryName } from '../../utils/translations';
 import { API_BASE_URL } from '../../config';
 import { useI18n } from '../../i18n';
@@ -16,6 +16,19 @@ const escapeHtml = (str: string | null | undefined): string => {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+};
+
+const predefinedDocumentLabelKeys: Record<string, string> = {
+  cv: 'form.cv',
+  diplome: 'form.diploma',
+  id_card: 'form.idCard',
+  cover_letter: 'form.coverLetter',
+  declaration_sur_honneur: 'form.declarationHonneur',
+  fiche_de_referencement: 'form.ficheReferencement',
+  extrait_registre: 'form.extraitRegistre',
+  note_methodologique: 'form.noteMethodologique',
+  liste_references: 'form.listeReferences',
+  offre_financiere: 'form.offreFinanciere',
 };
 
 interface User {
@@ -631,6 +644,30 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
         ? escapeHtml(offer.description).replace(/\n/g, '<br>')
         : null;
 
+      // Requested documents: legacy predefined documents that remain enabled,
+      // followed by the offer's custom required/optional documents.
+      const removedDefaultDocuments = new Set<string>(
+        Array.isArray(offer.removed_default_documents) ? offer.removed_default_documents : []
+      );
+      const predefinedDocuments = offer.method
+        ? getRequiredDocumentsForMethod(offer.method)
+            .filter(document => !removedDefaultDocuments.has(document.key))
+            .map(document => ({
+              name: t(predefinedDocumentLabelKeys[document.key] || document.name)
+                .replace(/^(Upload|Télécharger)\s+/i, ''),
+              required: true,
+            }))
+        : [];
+      const customDocuments = Array.isArray(offer.custom_required_documents)
+        ? offer.custom_required_documents.map((document: any) => ({
+            name: lang === 'en'
+              ? (document.document_name_en || document.document_name)
+              : document.document_name,
+            required: Boolean(document.required),
+          }))
+        : [];
+      const requestedDocuments = [...predefinedDocuments, ...customDocuments];
+
       // Row helper for the details table
       const row = (label: string, value: string) => `
         <tr>
@@ -666,6 +703,22 @@ const ApplicationsSummary = ({ showAllOffers = false }: ApplicationsSummaryProps
               <div style="background: #f9fafb; padding: 12px; border-radius: 8px; font-size: 13px; color: #374151; line-height: 1.6; max-height: 200px; overflow-y: auto; border-left: 3px solid #e5e7eb;">${description}</div>
             </div>
           ` : ''}
+
+          <div style="margin-top: 16px;">
+            <h4 style="font-size: 13px; font-weight: 600; color: #6b7280; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.03em;">${escapeHtml(t('rh.offerDetails.requestedDocuments'))}</h4>
+            ${requestedDocuments.length > 0 ? `
+              <div style="display: grid; gap: 7px;">
+                ${requestedDocuments.map(document => `
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
+                    <span style="font-size: 13px; color: #374151;">${escapeHtml(document.name)}</span>
+                    <span style="flex-shrink: 0; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: ${document.required ? '#fee2e2' : '#fef3c7'}; color: ${document.required ? '#b91c1c' : '#92400e'};">${escapeHtml(t(document.required ? 'rh.offerDetails.required' : 'rh.offerDetails.optional'))}</span>
+                  </div>
+                `).join('')}
+              </div>
+            ` : `
+              <p style="color: #9ca3af; font-style: italic; font-size: 13px;">${escapeHtml(t('rh.offerDetails.noRequestedDocuments'))}</p>
+            `}
+          </div>
 
           <div style="margin-top: 16px;">
             <h4 style="font-size: 13px; font-weight: 600; color: #6b7280; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.03em;">${escapeHtml(t('rh.offerDetails.tdr'))}</h4>
